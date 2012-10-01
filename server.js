@@ -1,16 +1,11 @@
 // Require dependencies
 var connect = require('connect');
-var http = require('http');
-var app = connect();
  
-app.use(connect.static(__dirname + "/static"));
-app.use(handler);
 
 // creating the server ( localhost:8000 )
-var server = http.createServer(app).listen(8000);
 
 var fs = require('fs');
-var io = require('socket.io').listen(server);
+//var io = require('socket.io').listen(server);
  
 // on server started we can load our client.html page
 function handler(req, res) {
@@ -23,9 +18,77 @@ function handler(req, res) {
     res.writeHead(200);
     res.end(data);
   });
+  console.log('Done handler');
 }
  
+function startServer() {
+	var app = connect.createServer();
+	app.use(connect.static(__dirname + "/static"));
+	app.use(handler);
+	var http = require('http').createServer(app);
+	var sockJs = require('sockjs').createServer();
+
+	sockJs.on('connection', onConnection);
+	sockJs.installHandlers(http, {
+		sockjs_url: 'http://localhost:8000/res/sockjs-0.3.2.min.js',
+		prefix: '/sockjs',
+		jsessionid: false,
+		log: sockJsLog,
+	});
+	http.listen(8000);
+}
+
+var broadcast = {};
+var nicknames = {};
+
+function doBroadcast(msg) {
+	for(var id in broadcast) {
+		broadcast[id].write(msg);
+	}
+}
+function onConnection(conn) {
+	// maintain our broadcast list
+	broadcast[conn.id] = conn;
+	// echo back
+	conn.on('data', function(message) {
+		console.log('Raw Message:' + message);
+		var msg = JSON.parse(message);
+		switch(msg.msg_type) {
+			case 'set_nickname':
+				var nickname = msg.content;
+				nicknames[conn.id] = nickname;
+				var connected_msg = '<b>' + nickname + ' is now connected.</b>';
+				doBroadcast(connected_msg);
+				break;
+			case 'chat':
+				var chatMsg = '<b>' + nicknames[conn.id] + '</b>:' + msg.content;
+				doBroadcast(chatMsg);
+				break;
+			default:
+				console.warn("Unknown message type received: " + msg.msg_type);
+		}
+	});
+	// do nothing
+	conn.on('close', function() {
+		console.log('    [-] broadcast close connection:' + conn);
+		var disconnectMsg = '<span class="dc">***' + nicknames[conn.id] + ' DISCONNECTED***</span>';
+		delete broadcast[conn.id];
+		delete nicknames[conn.id];
+		doBroadcast(disconnectMsg);
+	});
+}
+
+function sockJsLog(sev, msg) {
+	if (sev != 'debug' && sev != 'info') {
+		console.error(msg);
+//	else if (config.DEBUG)
+	} else {
+		console.log(msg);
+	}
+}
+
 // creating a new websocket to keep the content updated without any AJAX request
+/*
 io.sockets.on('connection', function(socket) {
  
   socket.on('set nickname', function(nickname) {
@@ -57,3 +120,10 @@ io.sockets.on('connection', function(socket) {
     });
   });
 });
+*/
+
+
+if (require.main === module) {
+	startServer();
+}
+
