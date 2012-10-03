@@ -33,7 +33,7 @@
 	 		</div>
 			<div class="span2">
 				<h2>Members</h2>
-				<table id="chat_members" class="table">
+				<table id="chat_members" class="table table-bordered">
 				<tbody>
 				<th>Nickname</th>
 				</tbody>
@@ -55,6 +55,9 @@
 			};
 			sock.send(JSON.stringify(toSend));
 		  }
+		  function addMemberToList(name) {
+			  $("#chat_members > tbody").append('<tr id="member_'+ name +'"><td>' + name + '</td></tr>');
+		  }
 
 		  // on every message recived we print the new datas inside the #broadcast-msg div
 		  sock.onmessage = function(message) {
@@ -65,8 +68,12 @@
 			switch(chatMsg.msg_type) {
 				case 'connect':
 					displayMessage = '<span class="connect"><b>' + chatMsg.nickname + '</b> joined the chat.</span>';
-					$("#chat_members > tbody").append('<tr id="member_'+ chatMsg.nickname +'"><td>' + chatMsg.nickname + '</td></tr>');
-
+					addMemberToList(chatMsg.nickname);
+					break;
+				case 'members':
+					for(var i in chatMsg.content) {
+						addMemberToList(chatMsg.content[i]);
+					}
 					break;
 				case 'chat':
 					displayMessage = '<b>' + chatMsg.nickname + '</b>: ' + chatMsg.content +'';
@@ -78,9 +85,11 @@
 				default:
 					console.log('Unknown message type, ignorning');
 			}
-			displayMessage = '<li>' + displayMessage + '</li>';
-			$('#broadcast-msg').append(displayMessage);
-			$('#chat_history').scrollTop($('#chat_history').height());
+			if (displayMessage) {
+				displayMessage = '<li>' + displayMessage + '</li>';
+				$('#broadcast-msg').append(displayMessage);
+				$('#chat_history').scrollTop($('#chat_history').height());
+			}
 		  };
 	 
 		  // Create a new socket connection
@@ -96,7 +105,7 @@
 		  };
 
 		  // connection closed
-		  sock.onclose = function() {alert('connection was closed');};
+		  sock.onclose = function() {alert('Connection to the Chat Server was closed');};
 		</script>
 	</div>
 	</body>

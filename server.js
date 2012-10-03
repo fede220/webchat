@@ -40,7 +40,7 @@ var nicknames = {};
 
 function doBroadcast(msg) {
 	for(var id in broadcast) {
-		broadcast[id].write(JSON.stringify(msg));
+		broadcast[id].write(msg);
 	}
 }
 function chatMessage(type, nickname, content) {
@@ -49,7 +49,16 @@ function chatMessage(type, nickname, content) {
 		nickname: nickname,
 		content: content
 	}
-	return theMessage;
+	console.log(JSON.stringify(theMessage));
+	return JSON.stringify(theMessage);
+}
+function nicknamesToArray() {
+	var nicknamesArray = new Array();
+	for(var id in nicknames) {
+		console.log(id + ':' + nicknames[id]);
+		nicknamesArray[nicknamesArray.length] = nicknames[id];
+	}
+	return nicknamesArray;
 }
 function onConnection(conn) {
 	// maintain our broadcast list
@@ -61,6 +70,12 @@ function onConnection(conn) {
 		switch(msg.msg_type) {
 			case 'set_nickname':
 				var nickname = msg.content;
+				// join = need to send down list of current members.
+				// If you're the first, don't bother!
+				var listOfNicknames =  nicknamesToArray();
+				if (listOfNicknames.length > 0) {
+					conn.write(chatMessage('members', nickname, listOfNicknames));
+				}
 				nicknames[conn.id] = nickname;
 				doBroadcast(chatMessage('connect', nickname, 'CONNECTED'));
 				break;
