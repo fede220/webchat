@@ -1,13 +1,8 @@
 // Require dependencies
 var connect = require('connect');
- 
-
-// creating the server ( localhost:8000 )
-
 var fs = require('fs');
-//var io = require('socket.io').listen(server);
  
-// on server started we can load our client.html page
+// request handler
 function handler(req, res) {
   fs.readFile(__dirname + '/client.html', function(err, data) {
     if(err) {
@@ -21,6 +16,7 @@ function handler(req, res) {
   console.log('Done handler');
 }
  
+// creating the server ( localhost:8000 )
 function startServer() {
 	var app = connect.createServer();
 	app.use(connect.static(__dirname + "/static"));
@@ -38,13 +34,22 @@ function startServer() {
 	http.listen(8000);
 }
 
+// TODO: this probably belongs in redis (or at least a session)
 var broadcast = {};
 var nicknames = {};
 
 function doBroadcast(msg) {
 	for(var id in broadcast) {
-		broadcast[id].write(msg);
+		broadcast[id].write(JSON.stringify(msg));
 	}
+}
+function chatMessage(type, nickname, content) {
+	var theMessage = {
+		msg_type: type,
+		nickname: nickname,
+		content: content
+	}
+	return theMessage;
 }
 function onConnection(conn) {
 	// maintain our broadcast list
@@ -57,21 +62,19 @@ function onConnection(conn) {
 			case 'set_nickname':
 				var nickname = msg.content;
 				nicknames[conn.id] = nickname;
-				var connected_msg = '<b>' + nickname + ' is now connected.</b>';
-				doBroadcast(connected_msg);
+				doBroadcast(chatMessage('connect', nickname, 'CONNECTED'));
 				break;
 			case 'chat':
-				var chatMsg = '<b>' + nicknames[conn.id] + '</b>:' + msg.content;
-				doBroadcast(chatMsg);
+				doBroadcast(chatMessage('chat', nicknames[conn.id], msg.content));
 				break;
 			default:
 				console.warn("Unknown message type received: " + msg.msg_type);
 		}
 	});
-	// do nothing
+	// notify disconnect
 	conn.on('close', function() {
 		console.log('    [-] broadcast close connection:' + conn);
-		var disconnectMsg = '<span class="dc">***' + nicknames[conn.id] + ' DISCONNECTED***</span>';
+		var disconnectMsg = chatMessage('disconnect', nicknames[conn.id], 'DISCONNECTED');
 		delete broadcast[conn.id];
 		delete nicknames[conn.id];
 		doBroadcast(disconnectMsg);
@@ -86,42 +89,6 @@ function sockJsLog(sev, msg) {
 		console.log(msg);
 	}
 }
-
-// creating a new websocket to keep the content updated without any AJAX request
-/*
-io.sockets.on('connection', function(socket) {
- 
-  socket.on('set nickname', function(nickname) {
-    // Save a variable 'nickname'
-    socket.set('nickname', nickname, function() {
-      console.log('Connect', nickname);
-      var connected_msg = '<b>' + nickname + ' is now connected.</b>';
- 
-      io.sockets.volatile.emit('broadcast_msg', connected_msg);
-    });
-  });
- 
-  socket.on('emit_msg', function (msg) {
-    // Get the variable 'nickname'
-    socket.get('nickname', function (err, nickname) {
-      console.log('Chat message by', nickname);
-      io.sockets.volatile.emit( 'broadcast_msg' , nickname + ': ' + msg );
-    });
-  });
- 
-  // Handle disconnection of clients
-  socket.on('disconnect', function () {
-    socket.get('nickname', function (err, nickname) {
-      console.log('Disconnect', nickname);
-      var disconnected_msg = '<b>' + nickname + ' has disconnected.</b>'
- 
-      // Broadcast to all users the disconnection message
-      io.sockets.volatile.emit( 'broadcast_msg' , disconnected_msg);
-    });
-  });
-});
-*/
-
 
 if (require.main === module) {
 	startServer();

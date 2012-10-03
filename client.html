@@ -1,61 +1,103 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>Node.js Web Chat Demo</title>
-<link rel="stylesheet" href="res/css/bootstrap.css">
-</head>
-  <body>
-    <h1>Welcome on the chat</h1>
- 
-    <label for="msg-input">Broadcast message</label>
-    <input id="msg-input" name="msg-input" type="text" size="30" />
-    <p>Press enter to submit your message</p>
- 
-    <ul id="broadcast-msg"></ul>
- 
-    <!-- Include the socket.io javascript on the client side -->
-    <script src="res/sockjs-0.3.2.min.js"></script>
-    <script src="http://code.jquery.com/jquery-1.7.1.min.js"></script>
+	<title>Node.js Ramshackle Web Chat v0.1</title>
+	<link rel="stylesheet" href="res/css/bootstrap.css">
+	<!-- Include the socket.io javascript on the client side -->
+	<script src="res/sockjs-0.3.2.min.js"></script>
+	<script src="http://code.jquery.com/jquery-1.7.1.min.js"></script>
 	<style>
-		span.dc { color: red; font-weight:bold; }
+		span.connect{ color: blue; font-weight:bold; }
+		span.disconnect{ color: red; font-weight:bold; }
+		#chat_history {
+			height:400px;
+			overflow: scroll;
+		}
+		#msg-input {
+			width: 780px;
+		}
 	</style>
- 
-    <script>
-      // Establish the connection with the server
-	  var sockjs_url = 'http://localhost:8000/sockjs';
-	  var sock = new SockJS(sockjs_url);
- 
-	  // send JSON msg
-	  function send(type, msg) {
-	  	var toSend = {
-			msg_type: type,
-			content: msg 
-		};
-		sock.send(JSON.stringify(toSend));
-	  }
+</head>
+	<body>
+	<div class="container">
+		<div class="row">
+			<div class="span10">
+				<h1>Ramshackle Chat v0.1</h1>
+				<div id="chat_history">
+					<ul id="broadcast-msg"></ul>
+				</div>
+			 
+				<label for="msg-input">Chat Message</label>
+				<input id="msg-input" name="msg-input" type="textarea" size="50" />
+				<p>Press enter to submit your message</p>
+	 		</div>
+			<div class="span2">
+				<h2>Members</h2>
+				<table id="chat_members" class="table">
+				<tbody>
+				<th>Nickname</th>
+				</tbody>
+				</table>
+			</div>
+	 	</div> <!-- row -->
+	 
+	 
+		<script>
+		  // Establish the connection with the server
+		  var sockjs_url = 'http://localhost:8000/sockjs';
+		  var sock = new SockJS(sockjs_url);
+	 
+		  // send JSON msg
+		  function send(type, msg) {
+			var toSend = {
+				msg_type: type,
+				content: msg 
+			};
+			sock.send(JSON.stringify(toSend));
+		  }
 
-      // on every message recived we print the new datas inside the #broadcast-msg div
-	  sock.onmessage = function(message) {
-	    var data = message.data;
-        console.log('Get broadcasted msg:', data);
-        var displayMessage = '<li>' + data + '</li>';
-        $('#broadcast-msg').append(displayMessage);
-      };
- 
-      // Create a new socket connection
-      sock.onopen = function() {
- 		var nickname = prompt('What is your nickname?');
-		  send('set_nickname', nickname);
- 
-        $('#msg-input').change( function(){
-          var txt = $(this).val();
-          $(this).val('');
-		  send('chat', txt);
-        });
-      };
+		  // on every message recived we print the new datas inside the #broadcast-msg div
+		  sock.onmessage = function(message) {
+			var data = message.data;
+			console.log('Get broadcasted msg:', data);
+			var chatMsg = JSON.parse(message.data);
+			var displayMessage = '';
+			switch(chatMsg.msg_type) {
+				case 'connect':
+					displayMessage = '<span class="connect"><b>' + chatMsg.nickname + '</b> joined the chat.</span>';
+					$("#chat_members > tbody").append('<tr id="member_'+ chatMsg.nickname +'"><td>' + chatMsg.nickname + '</td></tr>');
 
-	  // connection closed
-	  sock.onclose = function() {alert('connection was closed');};
-    </script>
-  </body>
+					break;
+				case 'chat':
+					displayMessage = '<b>' + chatMsg.nickname + '</b>: ' + chatMsg.content +'';
+					break;
+				case 'disconnect':
+					displayMessage = '<span class="disconnect"><b>' + chatMsg.nickname + '</b> left the chat.</span>';
+					$("#member_" + chatMsg.nickname).remove();
+					break;
+				default:
+					console.log('Unknown message type, ignorning');
+			}
+			displayMessage = '<li>' + displayMessage + '</li>';
+			$('#broadcast-msg').append(displayMessage);
+			$('#chat_history').scrollTop($('#chat_history').height());
+		  };
+	 
+		  // Create a new socket connection
+		  sock.onopen = function() {
+			var nickname = prompt('What is your nickname?');
+			  send('set_nickname', nickname);
+	 
+			$('#msg-input').change( function(){
+			  var txt = $(this).val();
+			  $(this).val('');
+			  send('chat', txt);
+			});
+		  };
+
+		  // connection closed
+		  sock.onclose = function() {alert('connection was closed');};
+		</script>
+	</div>
+	</body>
 </html>
