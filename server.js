@@ -1,6 +1,7 @@
 // Require dependencies
 var connect = require('connect');
 var fs = require('fs');
+var crypto = require('crypto');
  
 // request handler
 function handler(req, res) {
@@ -37,17 +38,19 @@ function startServer() {
 // TODO: this probably belongs in redis (or at least a session)
 var broadcast = {};
 var nicknames = {};
+var connectionsByNickname = {};
 
 function doBroadcast(msg) {
 	for(var id in broadcast) {
 		broadcast[id].write(msg);
 	}
 }
-function chatMessage(type, nickname, content) {
+function chatMessage(type, nickname, content, target) {
 	var theMessage = {
 		msg_type: type,
 		nickname: nickname,
-		content: content
+		content: content,
+		target: target
 	}
 	console.log(JSON.stringify(theMessage));
 	return JSON.stringify(theMessage);
@@ -60,6 +63,22 @@ function nicknamesToArray() {
 	}
 	return nicknamesArray;
 }
+// TODO: handle collision?
+function generateAnonNickname() {
+	var nickname = 'Anon_' + (new Date()).getTime().toString();
+	return nickname;
+}
+
+function addMember(conn, nickname) {
+	nicknames[conn.id] = nickname;
+	connectionsByNickname[nickname] = conn.id;
+}
+function removeMember(conn){
+	var nickname = nicknames[conn.id];
+	delete broadcast[conn.id];
+	delete nicknames[conn.id];
+	delete connectionsByNickname[nickname];
+}
 function onConnection(conn) {
 	// maintain our broadcast list
 	broadcast[conn.id] = conn;
@@ -70,17 +89,30 @@ function onConnection(conn) {
 		switch(msg.msg_type) {
 			case 'set_nickname':
 				var nickname = msg.content;
+				if (!nickname) {
+					nickname = generateAnonNickname();
+				}
 				// join = need to send down list of current members.
 				// If you're the first, don't bother!
 				var listOfNicknames =  nicknamesToArray();
 				if (listOfNicknames.length > 0) {
 					conn.write(chatMessage('members', nickname, listOfNicknames));
 				}
-				nicknames[conn.id] = nickname;
+				addMember(conn, nickname);
 				doBroadcast(chatMessage('connect', nickname, 'CONNECTED'));
 				break;
 			case 'chat':
 				doBroadcast(chatMessage('chat', nicknames[conn.id], msg.content));
+				break;
+			case 'whisper':
+				var targetConn= broadcast[connectionsByNickname[msg.target]];
+				if (targetConn) {
+					var toSend = chatMessage('whisper', nicknames[conn.id], msg.content, msg.target);
+					conn.write(toSend);
+					targetConn.write(toSend);
+				} else {
+					conn.write(chatMessage('chat', msg.target, ' - username doesn\'t exist'));
+				}
 				break;
 			default:
 				console.warn("Unknown message type received: " + msg.msg_type);
@@ -90,8 +122,7 @@ function onConnection(conn) {
 	conn.on('close', function() {
 		console.log('    [-] broadcast close connection:' + conn);
 		var disconnectMsg = chatMessage('disconnect', nicknames[conn.id], 'DISCONNECTED');
-		delete broadcast[conn.id];
-		delete nicknames[conn.id];
+		removeMember(conn);
 		doBroadcast(disconnectMsg);
 	});
 }
