@@ -58,7 +58,6 @@ function chatMessage(type, nickname, content, target) {
 function nicknamesToArray() {
 	var nicknamesArray = new Array();
 	for(var id in nicknames) {
-		console.log(id + ':' + nicknames[id]);
 		nicknamesArray[nicknamesArray.length] = nicknames[id];
 	}
 	return nicknamesArray;
@@ -86,7 +85,7 @@ function onConnection(conn) {
 	conn.on('data', function(message) {
 		console.log('Raw Message:' + message);
 		var msg = JSON.parse(message);
-		switch(msg.msg_type) {
+		switch(msg.msg_type ? msg.msg_type : '') {
 			case 'set_nickname':
 				var nickname = msg.content;
 				if (!nickname) {
@@ -102,7 +101,8 @@ function onConnection(conn) {
 				doBroadcast(chatMessage('connect', nickname, 'CONNECTED'));
 				break;
 			case 'chat':
-				doBroadcast(chatMessage('chat', nicknames[conn.id], msg.content));
+			case 'emote':
+				doBroadcast(chatMessage(msg.msg_type, nicknames[conn.id], msg.content));
 				break;
 			case 'whisper':
 				var targetConn= broadcast[connectionsByNickname[msg.target]];
@@ -138,5 +138,10 @@ function sockJsLog(sev, msg) {
 
 if (require.main === module) {
 	startServer();
+/*	require('async').map(['server.js','client.html','static/res/sockjs-0.3.2.min.js', 'dne.txt'], function(item, callback) { console.log("in the iterator"); callback(null, 'WOO');}, function(err, results){
+	    // results is now an array of stats for each file
+		console.log(require('util').inspect(results));
+		});
+		*/
 }
 

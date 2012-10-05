@@ -10,6 +10,8 @@
 		span.connect{ color: blue; font-weight:bold; }
 		span.disconnect{ color: red; font-weight:bold; }
 		span.whisper{ color: purple; font-weight:bold; }
+		span.emote { color: teal; font-style:italic; }
+		span.system { color: gray; font-style:italic; }
 		.me { background-color: #ddddff; }
 		#chat_history {
 			height:400px;
@@ -49,22 +51,88 @@
 		  var sockjs_url = 'http://localhost:8000/sockjs';
 		  var sock = new SockJS(sockjs_url);
 		  var myNickname = '';
-	 
-		  // send JSON msg
-		  function send(type, msg, target) {
-			var toSend = {
-				msg_type: type,
-				content: msg,
-				target: target
-			};
-			sock.send(JSON.stringify(toSend));
+
+
+		  // messaging protocol
+		  var MESSAGE_TYPES = ['chat', 'set_nickname', 'whisper', 'emote'];
+		  var CMD_MESSAGES = ['whisper', 'emote'];
+		  var CMD_REGEX = [ (/(^\/w)|(^\/whisper)/i), (/(^\/e)|(^\/emote)/i)];
+		  var CMD_ARGS_NUM = [ 3, 2 ];
+
+		  function Message(type, content, target) {
+		  	this.msg_type = type;
+			this.content = content;
+			this.target = target;
 		  }
+		  var M = Message.prototype;
+
+		  // send JSON msg
+		  function send(msg) {
+			sock.send(JSON.stringify(msg));
+		  }
+		  // end messaging protocol
+	 
 		  function addMemberToList(name) {
 			  $("#chat_members > tbody").append('<tr id="member_'+ name +'" style="display:none"><td>' + name + '</td></tr>');
 			  if (name == myNickname) {
-				  $("#member_" + name).addClass("me");
+				  $("#member_" + name).addClass("info");
 			  }
 			  $("#member_" + name).fadeIn("fast");
+		  }
+		  function displayChatMessage(displayMessage) {
+			if (displayMessage) {
+				displayMessage = '<li>' + displayMessage + '</li>';
+				$('#broadcast-msg').append(displayMessage);
+				$('#chat_history').scrollTop($('#chat_history').height());
+			}
+		  }
+		  function createCommandMessage(type, cmdArgs, content) {
+		  	var toSend = null;
+			switch(type) {
+				case 'whisper':
+					// TODO: validate target; handle case-insensitive.
+					if (myNickname != cmdArgs[1]) {
+						toSend = new Message(type, content, cmdArgs[1]);
+					} else {
+						displayChatMessage('<span class="system">You can\'t whisper to yourself!</span>');
+					}
+					break;
+				case 'emote':
+					toSend = new Message(type, content);
+					break;
+				default:
+					console.log('Unknown command: ' + cmdArgs[0]);
+					break;
+			}
+			return toSend;
+
+		  }
+		  function parseMessageToSend(txt) {
+			  // FIXME: using tokenization split/join is ineffcient for messages with a lot of spaces.  Better to use an indexOf means instead.
+			  var tokens = txt.split(" ");
+			  // handle commands - examine first token for command escape
+			  if (tokens.length > 0 && (/^\//).test(tokens[0])) {
+			  	var command = null;
+				var content = null;
+			  	for (var i=0; i<CMD_MESSAGES.length; i++) {
+					if (CMD_REGEX[i].test(tokens[0]) && tokens.length >= CMD_ARGS_NUM[i]) {
+						command = tokens.splice(0, CMD_ARGS_NUM[i]-1);
+						content = tokens.join(" ");
+						var toSend = createCommandMessage(CMD_MESSAGES[i], command, content);
+						if (toSend) {
+							send(toSend);
+						}
+						break;
+					}
+				}
+				if (!command) {
+					displayChatMessage('<span class="system">Unknown command/invalid syntax for command "' + tokens[0] + '"</span>');
+				}
+			  } else {
+			  	// general chat
+			    send(new Message('chat', txt));
+			  }
+
 		  }
 
 		  // on every message recived we print the new datas inside the #broadcast-msg div
@@ -97,6 +165,9 @@
 						displayMessage = '<span class="whisper"><b>' + chatMsg.nickname + '</b> whispers</span>: ' + chatMsg.content +'';
 					}
 					break;
+				case 'emote':
+					displayMessage = '<span class="emote"><b>' + chatMsg.nickname + '</b> ' + chatMsg.content +'</span>';
+					break;
 				case 'disconnect':
 					displayMessage = '<span class="disconnect"><b>' + chatMsg.nickname + '</b> left the chat.</span>';
 					$("#member_" + chatMsg.nickname).fadeOut("slow", function() { $("#member_" + chatMsg.nickname).remove() } );
@@ -104,38 +175,18 @@
 				default:
 					console.log('Unknown message type, ignorning');
 			}
-			if (displayMessage) {
-				displayMessage = '<li>' + displayMessage + '</li>';
-				$('#broadcast-msg').append(displayMessage);
-				$('#chat_history').scrollTop($('#chat_history').height());
-			}
+			displayChatMessage(displayMessage);
 		  };
 	 
 		  // Create a new socket connection
 		  sock.onopen = function() {
 			myNickname = prompt('What is your nickname?');
-			send('set_nickname', myNickname);
+			send(new Message('set_nickname', myNickname));
 	 
 			$('#msg-input').change( function(){
 			  var txt = $(this).val().trim();
 			  $(this).val('');
-			  // handle special commands - examine first token
-			  var tokens = txt.split(" ");
-			  if (tokens.length > 0 && (/^\//).test(tokens[0])) {
-			  	// whisper
-				if ((/(^\/w)|(^\/whisper)/i).test(tokens[0]) && tokens.length >= 3) {
-					var next = 0;
-					var last = 0;
-					for (var i = 0; i < 2; i++) {
-						last = next;
-						next = txt.indexOf(" ", last)+1;
-					}
-				  send('whisper', txt.substring(next), tokens[1]);
-				}
-			  } else {
-			  	// general chat
-			    send('chat', txt);
-			  }
+			  parseMessageToSend(txt);
 			});
 		  };
 
