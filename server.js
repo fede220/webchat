@@ -50,8 +50,8 @@ function chatMessage(type, from, content, target) {
 	return JSON.stringify(theMessage);
 }
 // TODO: handle collision?
-function generateAnonName() {
-	var name = 'Anon_' + (new Date()).getTime().toString();
+function generateAnonName(client) {
+	var name = 'Anon_' + client.id.toString();
 	return name;
 }
 // ** END MISC
@@ -94,7 +94,11 @@ C.onMessage = function(data) {
 		case 'set_nickname':
 			this.name = msg.content;
 			if (!this.name) {
-				this.name = generateAnonName();
+				this.name = generateAnonName(this);
+			}
+			// initial connect, send ack back to client w/ client details
+			if (!chatroom.clients[this.id]) {
+				this.send(chatMessage('connect', this, 'CONNECTED'));
 			}
 			chatroom.addClient(this);
 			// need to send down list of current members.
@@ -148,7 +152,7 @@ CR.addClient = function(client) {
 	this.clients[client.id] = client;
 	client.once('disconnected', this.removeClient.bind(this, client));
 	// tell everyone in the room that a new person joined
-	this.broadcast(chatMessage('connect', client, 'CONNECTED'));
+	this.broadcast(chatMessage('join', client, 'JOINED'));
 }
 
 // Chatroom: remove client
@@ -184,9 +188,8 @@ function onConnection(conn) {
 		chatroom = new Chatroom(1);
 	}
 	var client = new Client(conn);
-	// echo back
+	// handlers
 	conn.on('data', client.onMessage.bind(client)); 
-	// notify disconnect
 	conn.once('close', client.onDisconnect.bind(client));
 }
 

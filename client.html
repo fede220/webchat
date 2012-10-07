@@ -50,7 +50,9 @@
 		  // Establish the connection with the server
 		  var sockjs_url = 'http://localhost:8000/sockjs';
 		  var sock = new SockJS(sockjs_url);
-		  var myNickname = '';
+		  var chatMembers = [];
+		  var nameMemberLookup = {};
+		  var myClient = null;
 
 
 		  // messaging protocol
@@ -72,17 +74,22 @@
 		  }
 		  // end messaging protocol
 	 
-		  function addMembersToList(clients) {
-			  for(var i in clients) {
-				var client = clients[i];
-				var domId = 'client_' + client.id;
-				var jqId = '#' + domId; 
-				$("#chat_members > tbody").append('<tr id="'+ domId +'" style="display:none"><td>' + client.name + '</td></tr>');
-				if (client.name == myNickname) {
-					$(jqId).addClass("info");
-				}
-				$(jqId).fadeIn("fast");
-			  }
+		  function addMember(client) {
+		  	chatMembers[client.id] = client;
+			nameMemberLookup[client.name.toLowerCase()] = client;
+			var domId = 'client_' + client.id;
+			var jqId = '#' + domId; 
+			$("#chat_members > tbody").append('<tr id="'+ domId +'" style="display:none"><td>' + client.name + '</td></tr>');
+			if (client.name == myClient.name) {
+				$(jqId).addClass("info");
+			}
+			$(jqId).fadeIn("fast");
+		  }
+		  function removeMember(client) {
+			  var jqId = '#client_' + client.id;
+			  $(jqId).fadeOut("slow", function() { $(jqId).remove() } );
+			  delete chatMembers[client.id];
+			  delete nameMemberLookup[client.name.toLowerCase()];
 		  }
 		  function displayChatMessage(displayMessage) {
 			if (displayMessage) {
@@ -95,9 +102,12 @@
 		  	var toSend = null;
 			switch(type) {
 				case 'whisper':
-					// TODO: validate target; handle case-insensitive.
-					if (myNickname != cmdArgs[1]) {
-						toSend = new Message(type, content, cmdArgs[1]);
+					// validate target; client must exist.
+					// translate name to target client ID
+					console.log('to lookup: ' + cmdArgs[1].toLowerCase());
+					var targetClient = nameMemberLookup[cmdArgs[1].toLowerCase()];
+					if (targetClient && myClient.id != targetClient.id) {
+						toSend = new Message(type, content, targetClient.id);
 					} else {
 						displayChatMessage('<span class="system">You can\'t whisper to yourself!</span>');
 					}
@@ -140,29 +150,34 @@
 
 		  }
 
-		  // on every message recived we print the new datas inside the #broadcast-msg div
+		  // on every message recieved we append to the #broadcast-msg div ul
 		  sock.onmessage = function(message) {
 			var data = message.data;
-			console.log('Get broadcasted msg:', data);
+			console.log('Got new msg:', data);
 			var chatMsg = JSON.parse(message.data);
 			var displayMessage = '';
 			switch(chatMsg.msg_type) {
 				case 'connect':
-					displayMessage = '<span class="connect"><b>' + chatMsg.from.name + '</b> joined the chat.</span>';
-					if (myNickname == '') {
-						// if I went in anon, use server assigned name
-						myNickname = chatMsg.from.name;
+					if (!myClient) {
+						myClient = chatMsg.from;
 					}
 					break;
+				case 'join':
+					addMember(chatMsg.from);
+					displayMessage = '<span class="connect"><b>' + chatMsg.from.name + '</b> joined the chat.</span>';
+					break;
 				case 'members':
-					addMembersToList(chatMsg.content);
+					var clients = chatMsg.content;
+					for(var i in clients) {
+						addMember(clients[i]);
+					}
 					break;
 				case 'chat':
 					displayMessage = '<b>' + chatMsg.from.name + '</b>: ' + chatMsg.content +'';
 					break;
 				case 'whisper':
-					if (myNickname == chatMsg.from.name) {
-						displayMessage = '<span class="whisper">You whisper to <b>' + chatMsg.target + '</b></span>: ' + chatMsg.content +'';
+					if (myClient.name == chatMsg.from.name) {
+						displayMessage = '<span class="whisper">You whisper to <b>' + chatMembers[chatMsg.target].name + '</b></span>: ' + chatMsg.content +'';
 					} else {
 						displayMessage = '<span class="whisper"><b>' + chatMsg.from.name + '</b> whispers</span>: ' + chatMsg.content +'';
 					}
@@ -172,7 +187,7 @@
 					break;
 				case 'disconnect':
 					displayMessage = '<span class="disconnect"><b>' + chatMsg.from.name + '</b> left the chat.</span>';
-					$("#client_" + chatMsg.from.name).fadeOut("slow", function() { $("#client_" + chatMsg.from.name).remove() } );
+					removeMember(chatMsg.from);
 					break;
 				default:
 					console.log('Unknown message type, ignorning');
@@ -182,7 +197,7 @@
 	 
 		  // Create a new socket connection
 		  sock.onopen = function() {
-			myNickname = prompt('What is your nickname?');
+			var myNickname = prompt('What is your nickname?');
 			send(new Message('set_nickname', myNickname));
 	 
 			$('#msg-input').change( function(){
