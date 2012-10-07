@@ -1,7 +1,10 @@
 // Require dependencies
-var connect = require('connect');
 var fs = require('fs');
 var crypto = require('crypto');
+var events = require('events');
+var util = require('util');
+
+var connect = require('connect');
  
 // request handler
 function handler(req, res) {
@@ -35,96 +38,156 @@ function startServer() {
 	http.listen(8000);
 }
 
-// TODO: this probably belongs in redis (or at least a session)
-var broadcast = {};
-var nicknames = {};
-var connectionsByNickname = {};
-
-function doBroadcast(msg) {
-	for(var id in broadcast) {
-		broadcast[id].write(msg);
-	}
-}
-function chatMessage(type, nickname, content, target) {
+// MISC
+function chatMessage(type, from, content, target) {
 	var theMessage = {
 		msg_type: type,
-		nickname: nickname,
+		from: from.toJSON(),
 		content: content,
 		target: target
 	}
 	console.log(JSON.stringify(theMessage));
 	return JSON.stringify(theMessage);
 }
-function nicknamesToArray() {
-	var nicknamesArray = new Array();
-	for(var id in nicknames) {
-		nicknamesArray[nicknamesArray.length] = nicknames[id];
-	}
-	return nicknamesArray;
-}
 // TODO: handle collision?
-function generateAnonNickname() {
-	var nickname = 'Anon_' + (new Date()).getTime().toString();
-	return nickname;
+function generateAnonName() {
+	var name = 'Anon_' + (new Date()).getTime().toString();
+	return name;
+}
+// ** END MISC
+
+// GLOBAL CHATROOM
+var chatroom = null;
+var CLIENT_CTR = 0;
+
+// ** Chat Client
+function Client(conn) {
+	this.conn = conn;
+	this.id = ++CLIENT_CTR;
+	this.name = null;
+	this.opts = {};
+}
+util.inherits(Client, events.EventEmitter);
+var C = Client.prototype;
+
+// Client - JSON format
+C.toJSON = function() {
+	return {
+		id: this.id,
+		name: this.name,
+		opts: this.opts
+	}
 }
 
-function addMember(conn, nickname) {
-	nicknames[conn.id] = nickname;
-	connectionsByNickname[nickname] = conn.id;
+// Client - data received from client
+C.onMessage = function(data) {
+	var msg;
+	console.log('Raw Message:' + data);
+    try {
+        msg = JSON.parse(data);
+    }
+    catch (e) {
+        this.drop('Bad JSON.');
+        return;
+	}
+	switch(msg.msg_type ? msg.msg_type : '') {
+		case 'set_nickname':
+			this.name = msg.content;
+			if (!this.name) {
+				this.name = generateAnonName();
+			}
+			chatroom.addClient(this);
+			// need to send down list of current members.
+			var memberList =  chatroom.getMemberList();
+			if (memberList.length > 0) {
+				this.send(chatMessage('members', this, memberList));
+			}
+			break;
+		case 'chat':
+		case 'emote':
+			chatroom.broadcast(chatMessage(msg.msg_type, this, msg.content));
+			break;
+		case 'whisper':
+			var targetClient = chatroom.clients[msg.target];
+			if (targetClient) {
+				var toSend = chatMessage('whisper', this, msg.content, targetClient.id);
+				this.send(toSend);
+				targetClient.send(toSend);
+			} else {
+				this.send(chatMessage('chat', targetClient, ' - client doesn\'t exist'));
+			}
+			break;
+		default:
+			console.warn("Unknown message type received: " + msg.msg_type);
+	}
 }
-function removeMember(conn){
-	var nickname = nicknames[conn.id];
-	delete broadcast[conn.id];
-	delete nicknames[conn.id];
-	delete connectionsByNickname[nickname];
+// Client - disconnect
+C.onDisconnect = function() {
+	console.log('    [-] closing connection for client: ' + this.id + ', conn:' + this.conn);
+	this.emit('disconnected');
+	this.conn.removeAllListeners();
+	this.removeAllListeners();
 }
+// Client - send message to client
+C.send = function(msg) {
+	this.conn.write(msg);
+}
+// ** END client
+
+// ** Chatroom
+function Chatroom(id) {
+	this.id = id;
+	this.clients = {};
+}
+var CR = Chatroom.prototype;
+
+// Chatroom: add client
+CR.addClient = function(client) {
+	console.log('adding client: ' + client.id + ", name: " + client.name);
+	// add to client list
+	this.clients[client.id] = client;
+	client.once('disconnected', this.removeClient.bind(this, client));
+	// tell everyone in the room that a new person joined
+	this.broadcast(chatMessage('connect', client, 'CONNECTED'));
+}
+
+// Chatroom: remove client
+CR.removeClient = function(client) {
+	delete this.clients[client.id];
+	var disconnectMsg = chatMessage('disconnect', client, 'DISCONNECTED');
+	this.broadcast(disconnectMsg);
+}
+
+// Chatroom: broadcast message
+CR.broadcast = function(msg) {
+	for(var id in this.clients) {
+		this.clients[id].send(msg);
+	}
+}
+
+// Chatroom: send message (to client)
+CR.send = function(targetId, msg) {
+	this.clients[target].send(msg);
+}
+
+// Chatroom: get list of current members (id:name)
+CR.getMemberList = function() {
+	var members = new Array();
+	for(var id in this.clients) {
+		members[members.length] = { id: this.clients[id].id, name: this.clients[id].name };
+	}
+	return members;
+}
+// ** END Chatroom
 function onConnection(conn) {
-	// maintain our broadcast list
-	broadcast[conn.id] = conn;
+	if (!chatroom) {
+		chatroom = new Chatroom(1);
+	}
+	var client = new Client(conn);
 	// echo back
-	conn.on('data', function(message) {
-		console.log('Raw Message:' + message);
-		var msg = JSON.parse(message);
-		switch(msg.msg_type ? msg.msg_type : '') {
-			case 'set_nickname':
-				var nickname = msg.content;
-				if (!nickname) {
-					nickname = generateAnonNickname();
-				}
-				// join = need to send down list of current members.
-				// If you're the first, don't bother!
-				var listOfNicknames =  nicknamesToArray();
-				if (listOfNicknames.length > 0) {
-					conn.write(chatMessage('members', nickname, listOfNicknames));
-				}
-				addMember(conn, nickname);
-				doBroadcast(chatMessage('connect', nickname, 'CONNECTED'));
-				break;
-			case 'chat':
-			case 'emote':
-				doBroadcast(chatMessage(msg.msg_type, nicknames[conn.id], msg.content));
-				break;
-			case 'whisper':
-				var targetConn= broadcast[connectionsByNickname[msg.target]];
-				if (targetConn) {
-					var toSend = chatMessage('whisper', nicknames[conn.id], msg.content, msg.target);
-					conn.write(toSend);
-					targetConn.write(toSend);
-				} else {
-					conn.write(chatMessage('chat', msg.target, ' - username doesn\'t exist'));
-				}
-				break;
-			default:
-				console.warn("Unknown message type received: " + msg.msg_type);
-		}
-	});
+	conn.on('data', client.onMessage.bind(client)); 
 	// notify disconnect
-	conn.on('close', function() {
-		console.log('    [-] broadcast close connection:' + conn);
-		var disconnectMsg = chatMessage('disconnect', nicknames[conn.id], 'DISCONNECTED');
-		removeMember(conn);
-		doBroadcast(disconnectMsg);
-	});
+	conn.once('close', client.onDisconnect.bind(client));
 }
 
 function sockJsLog(sev, msg) {

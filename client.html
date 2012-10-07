@@ -22,7 +22,7 @@
 		}
 	</style>
 </head>
-	<body>
+<body>
 	<div class="container">
 		<div class="row">
 			<div class="span10">
@@ -72,12 +72,17 @@
 		  }
 		  // end messaging protocol
 	 
-		  function addMemberToList(name) {
-			  $("#chat_members > tbody").append('<tr id="member_'+ name +'" style="display:none"><td>' + name + '</td></tr>');
-			  if (name == myNickname) {
-				  $("#member_" + name).addClass("info");
+		  function addMembersToList(clients) {
+			  for(var i in clients) {
+				var client = clients[i];
+				var domId = 'client_' + client.id;
+				var jqId = '#' + domId; 
+				$("#chat_members > tbody").append('<tr id="'+ domId +'" style="display:none"><td>' + client.name + '</td></tr>');
+				if (client.name == myNickname) {
+					$(jqId).addClass("info");
+				}
+				$(jqId).fadeIn("fast");
 			  }
-			  $("#member_" + name).fadeIn("fast");
 		  }
 		  function displayChatMessage(displayMessage) {
 			if (displayMessage) {
@@ -143,34 +148,31 @@
 			var displayMessage = '';
 			switch(chatMsg.msg_type) {
 				case 'connect':
-					displayMessage = '<span class="connect"><b>' + chatMsg.nickname + '</b> joined the chat.</span>';
+					displayMessage = '<span class="connect"><b>' + chatMsg.from.name + '</b> joined the chat.</span>';
 					if (myNickname == '') {
 						// if I went in anon, use server assigned name
-						myNickname = chatMsg.nickname;
+						myNickname = chatMsg.from.name;
 					}
-					addMemberToList(chatMsg.nickname);
 					break;
 				case 'members':
-					for(var i in chatMsg.content) {
-						addMemberToList(chatMsg.content[i]);
-					}
+					addMembersToList(chatMsg.content);
 					break;
 				case 'chat':
-					displayMessage = '<b>' + chatMsg.nickname + '</b>: ' + chatMsg.content +'';
+					displayMessage = '<b>' + chatMsg.from.name + '</b>: ' + chatMsg.content +'';
 					break;
 				case 'whisper':
-					if (myNickname == chatMsg.nickname) {
+					if (myNickname == chatMsg.from.name) {
 						displayMessage = '<span class="whisper">You whisper to <b>' + chatMsg.target + '</b></span>: ' + chatMsg.content +'';
 					} else {
-						displayMessage = '<span class="whisper"><b>' + chatMsg.nickname + '</b> whispers</span>: ' + chatMsg.content +'';
+						displayMessage = '<span class="whisper"><b>' + chatMsg.from.name + '</b> whispers</span>: ' + chatMsg.content +'';
 					}
 					break;
 				case 'emote':
-					displayMessage = '<span class="emote"><b>' + chatMsg.nickname + '</b> ' + chatMsg.content +'</span>';
+					displayMessage = '<span class="emote"><b>' + chatMsg.from.name + '</b> ' + chatMsg.content +'</span>';
 					break;
 				case 'disconnect':
-					displayMessage = '<span class="disconnect"><b>' + chatMsg.nickname + '</b> left the chat.</span>';
-					$("#member_" + chatMsg.nickname).fadeOut("slow", function() { $("#member_" + chatMsg.nickname).remove() } );
+					displayMessage = '<span class="disconnect"><b>' + chatMsg.from.name + '</b> left the chat.</span>';
+					$("#client_" + chatMsg.from.name).fadeOut("slow", function() { $("#client_" + chatMsg.from.name).remove() } );
 					break;
 				default:
 					console.log('Unknown message type, ignorning');
