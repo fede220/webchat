@@ -39,7 +39,7 @@
 				<h2>Members</h2>
 				<table id="chat_members" class="table table-bordered">
 				<tbody>
-				<th>Nickname</th>
+				<th></th><th>Nickname</th>
 				</tbody>
 				</table>
 			</div>
@@ -79,10 +79,11 @@
 			nameMemberLookup[client.name.toLowerCase()] = client;
 			var domId = 'client_' + client.id;
 			var jqId = '#' + domId; 
-			$("#chat_members > tbody").append('<tr id="'+ domId +'" style="display:none"><td>' + client.name + '</td></tr>');
+			$("#chat_members > tbody").append('<tr id="'+ domId +'" style="display:none"><td class="opts"></td><td>' + client.name + '</td></tr>');
 			if (client.name == myClient.name) {
 				$(jqId).addClass("info");
 			}
+			updateOpts(client);
 			$(jqId).fadeIn("fast");
 		  }
 		  function removeMember(client) {
@@ -90,6 +91,17 @@
 			  $(jqId).fadeOut("slow", function() { $(jqId).remove() } );
 			  delete chatMembers[client.id];
 			  delete nameMemberLookup[client.name.toLowerCase()];
+		  }
+		  function updateOpts(client) {
+			var jqId = '#client_' + client.id;	// client's row
+			var jqOptsId = jqId + " > td.opts";	// opts' row
+
+			// process opts flags
+			if (client.opts['op']) {
+				$(jqOptsId).prepend('<i class="icon-asterisk" title="Op"></i> ');
+			} else {
+				$(jqOptsId + " > i").remove();
+			}
 		  }
 		  function displayChatMessage(displayMessage) {
 			if (displayMessage) {

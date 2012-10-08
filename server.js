@@ -100,12 +100,13 @@ C.onMessage = function(data) {
 			if (!chatroom.clients[this.id]) {
 				this.send(chatMessage('connect', this, 'CONNECTED'));
 			}
-			chatroom.addClient(this);
 			// need to send down list of current members.
 			var memberList =  chatroom.getMemberList();
 			if (memberList.length > 0) {
 				this.send(chatMessage('members', this, memberList));
 			}
+			// finally, join.
+			chatroom.addClient(this);
 			break;
 		case 'chat':
 		case 'emote':
@@ -142,12 +143,18 @@ C.send = function(msg) {
 function Chatroom(id) {
 	this.id = id;
 	this.clients = {};
+	this.op = null;
 }
 var CR = Chatroom.prototype;
 
 // Chatroom: add client
 CR.addClient = function(client) {
 	console.log('adding client: ' + client.id + ", name: " + client.name);
+	// chatroom always needs OP, assign to 1st cleint
+	if (!this.op) {
+		this.op = client;
+		client.opts['op'] = true;
+	}
 	// add to client list
 	this.clients[client.id] = client;
 	client.once('disconnected', this.removeClient.bind(this, client));
@@ -178,7 +185,7 @@ CR.send = function(targetId, msg) {
 CR.getMemberList = function() {
 	var members = new Array();
 	for(var id in this.clients) {
-		members[members.length] = { id: this.clients[id].id, name: this.clients[id].name };
+		members[members.length] = this.clients[id].toJSON();
 	}
 	return members;
 }
