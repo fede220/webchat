@@ -96,6 +96,7 @@ C.onMessage = function(data) {
 			if (!this.name) {
 				this.name = generateAnonName(this);
 			}
+			// TODO: handle name-already-in-use
 			// initial connect, send ack back to client w/ client details
 			if (!chatroom.clients[this.id]) {
 				this.send(chatMessage('connect', this, 'CONNECTED'));
@@ -120,6 +121,15 @@ C.onMessage = function(data) {
 				targetClient.send(toSend);
 			} else {
 				this.send(chatMessage('chat', targetClient, ' - client doesn\'t exist'));
+			}
+			break;
+		case 'kick':
+			if (!this.opts['op']) {
+				this.send(chatMessage('system', this, 'Kick operation requires Op status'));
+			} else {
+				var targetClient = chatroom.clients[msg.target];
+				chatroom.broadcast(chatMessage('system', this, targetClient.name + ' was kicked from the chatroom by Op'));
+				targetClient.conn.close('-99', 'kicked by Op');
 			}
 			break;
 		default:

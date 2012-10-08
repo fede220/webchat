@@ -56,10 +56,10 @@
 
 
 		  // messaging protocol
-		  var MESSAGE_TYPES = ['chat', 'set_nickname', 'whisper', 'emote'];
-		  var CMD_MESSAGES = ['whisper', 'emote'];
-		  var CMD_REGEX = [ (/(^\/w)|(^\/whisper)/i), (/(^\/e)|(^\/emote)/i)];
-		  var CMD_ARGS_NUM = [ 3, 2 ];
+		  var MESSAGE_TYPES = ['chat', 'set_nickname', 'whisper', 'emote', 'kick'];
+		  var CMD_MESSAGES = ['whisper', 'emote', 'kick'];
+		  var CMD_REGEX = [ (/(^\/w)|(^\/whisper)/i), (/(^\/e)|(^\/emote)/i), (/(^\/k)|(^\/kick)/i)];
+		  var CMD_ARGS_NUM = [ 3, 2, 2 ];
 
 		  function Message(type, content, target) {
 		  	this.msg_type = type;
@@ -121,7 +121,15 @@
 					if (targetClient && myClient.id != targetClient.id) {
 						toSend = new Message(type, content, targetClient.id);
 					} else {
-						displayChatMessage('<span class="system">You can\'t whisper to yourself!</span>');
+						displayChatMessage('<span class="system">You can\'t ' + type + ' yourself!</span>');
+					}
+					break;
+				case 'kick':
+					var targetClient = nameMemberLookup[content.toLowerCase()];
+					if (targetClient && myClient.id != targetClient.id) {
+						toSend = new Message(type, content, targetClient.id);
+					} else {
+						displayChatMessage('<span class="system">You can\'t ' + type + ' yourself!</span>');
 					}
 					break;
 				case 'emote':
@@ -200,6 +208,9 @@
 				case 'disconnect':
 					displayMessage = '<span class="disconnect"><b>' + chatMsg.from.name + '</b> left the chat.</span>';
 					removeMember(chatMsg.from);
+					break;
+				case 'system':
+					displayChatMessage('<span class="system">' + chatMsg.content + '</span>');
 					break;
 				default:
 					console.log('Unknown message type, ignorning');
