@@ -2,17 +2,22 @@
 <html>
 <head>
 	<title>Node.js Ramshackle Web Chat v0.1</title>
+	<meta charset="UTF-8">
 	<link rel="stylesheet" href="res/css/bootstrap.css">
 	<!-- Include the socket.io javascript on the client side -->
 	<script src="res/sockjs-0.3.2.min.js"></script>
 	<script src="http://code.jquery.com/jquery-1.7.1.min.js"></script>
+	<script src="res/js/bootstrap.min.js"></script>
 	<style>
 		span.connect{ color: blue; font-weight:bold; }
 		span.disconnect{ color: red; font-weight:bold; }
 		span.whisper{ color: purple; font-weight:bold; }
 		span.emote { color: teal; font-style:italic; }
 		span.system { color: gray; font-style:italic; }
+
+		#chat_history.disabled { background-color: #dddddd; }
 		.me { background-color: #ddddff; }
+
 		#chat_history {
 			height:400px;
 			overflow: scroll;
@@ -27,7 +32,8 @@
 		<div class="row">
 			<div class="span10">
 				<h1>Ramshackle Chat v0.1</h1>
-				<div id="chat_history">
+				<div id="chat_history" class="disabled">
+					<a id="loginButton" href="#login" role="button" class="btn" data-toggle="modal">Join Chat!</a>
 					<ul id="broadcast-msg"></ul>
 				</div>
 			 
@@ -49,7 +55,7 @@
 		<script>
 		  // Establish the connection with the server
 		  var sockjs_url = 'http://localhost:8000/sockjs';
-		  var sock = new SockJS(sockjs_url);
+		  var sock = null;
 		  var chatMembers = [];
 		  var nameMemberLookup = {};
 		  var myClient = null;
@@ -170,8 +176,10 @@
 
 		  }
 
+		  // ** socket handler definition 
+
 		  // on every message recieved we append to the #broadcast-msg div ul
-		  sock.onmessage = function(message) {
+		  function handleSockMessage(message) {
 			var data = message.data;
 			console.log('Got new msg:', data);
 			var chatMsg = JSON.parse(message.data);
@@ -219,8 +227,8 @@
 		  };
 	 
 		  // Create a new socket connection
-		  sock.onopen = function() {
-			var myNickname = prompt('What is your nickname?');
+		  function handleSockOpen() {
+			var myNickname = $("#inputNickname").val();
 			send(new Message('set_nickname', myNickname));
 	 
 			$('#msg-input').change( function(){
@@ -231,8 +239,46 @@
 		  };
 
 		  // connection closed
-		  sock.onclose = function() {alert('Connection to the Chat Server was closed');};
+		  function handleSockClose() {
+			  $('#loginButton').show();
+			  $('#chat_history').addClass('disabled');
+			  alert('Connection to the Chat Server was closed');
+		  };
+
+		  // ** END socket handler definition 
+
+		  function login() {
+			  sock = new SockJS(sockjs_url);
+
+			  sock.onmessage = handleSockMessage;
+			  sock.onopen = handleSockOpen;
+			  sock.onclose = handleSockClose;
+
+
+			  $('#loginButton').hide();
+			  $('#chat_history').removeClass('disabled');
+			  $('#login').modal('hide');
+		  }
 		</script>
 	</div>
+
+	<!-- Login Dialog -->
+    <div id="login" class="modal hide fade">
+		<div class="modal-header">
+			<button type="button" class="close" data-dismiss="modal" aria-hidden="true">&times;</button>
+			<h3>Welcome to Ramshackle Chat</h3>
+		</div>
+		<div class="modal-body">
+			<p>To join, please enter a nickname.</p>
+			<form id="loginForm" name="loginForm" action="#">
+				<label for="inputNickname">Nickname:</label>
+				<input id="inputNickname" name="inputNickname"/>
+			</form>
+		</div>
+		<div class="modal-footer">
+			<button class="btn" data-dismiss="modal" aria-hidden="true">Cancel</button>
+			<button class="btn btn-primary" onClick="login()">Join Chat!</a>
+		</div>
+    </div>
 	</body>
 </html>
