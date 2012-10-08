@@ -175,8 +175,29 @@ CR.addClient = function(client) {
 // Chatroom: remove client
 CR.removeClient = function(client) {
 	delete this.clients[client.id];
+	var newOpNotification = null;
+	// if client was OP, assign OP to next client. 
+	if (this.op = client) {
+		console.log('** Op ' + this.op.name + ' (' + this.op.id + ') disconnected!');
+		this.op = null;
+		// pick the first person in the enumeration.
+		for(var id in this.clients) {
+			this.op = this.clients[id];
+			this.op.opts['op'] = true;
+			console.log('** Assigning Op to: ' + this.op.name + ' (' + this.op.id + ')');
+			// notify
+			newOpNotification = chatMessage('update', client, [this.op.toJSON()]);
+			break;
+		}
+		if (!this.op) {
+			console.log('** WARN: no Op assigned!');
+		}
+	}
 	var disconnectMsg = chatMessage('disconnect', client, 'DISCONNECTED');
 	this.broadcast(disconnectMsg);
+	if (newOpNotification) {
+		this.broadcast(newOpNotification);
+	}
 }
 
 // Chatroom: broadcast message

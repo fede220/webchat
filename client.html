@@ -20,7 +20,8 @@
 
 		#chat_history {
 			height:400px;
-			overflow: scroll;
+			overflow-y: scroll;
+			overflow-x: hidden;
 		}
 		#msg-input {
 			width: 780px;
@@ -85,7 +86,7 @@
 			nameMemberLookup[client.name.toLowerCase()] = client;
 			var domId = 'client_' + client.id;
 			var jqId = '#' + domId; 
-			$("#chat_members > tbody").append('<tr id="'+ domId +'" style="display:none"><td class="opts"></td><td>' + client.name + '</td></tr>');
+			$("#chat_members > tbody").append('<tr id="'+ domId +'" class="memberRow" style="display:none"><td class="opts"></td><td>' + client.name + '</td></tr>');
 			if (client.name == myClient.name) {
 				$(jqId).addClass("info");
 			}
@@ -97,6 +98,10 @@
 			  $(jqId).fadeOut("slow", function() { $(jqId).remove() } );
 			  delete chatMembers[client.id];
 			  delete nameMemberLookup[client.name.toLowerCase()];
+		  }
+		  // on connect/reconnect, reset member list
+		  function clearMembers() {
+			 $("#chat_members > tbody > tr.memberRow").remove();
 		  }
 		  function updateOpts(client) {
 			var jqId = '#client_' + client.id;	// client's row
@@ -217,6 +222,12 @@
 					displayMessage = '<span class="disconnect"><b>' + chatMsg.from.name + '</b> left the chat.</span>';
 					removeMember(chatMsg.from);
 					break;
+				case 'update':
+					var clients = chatMsg.content;
+					for(var i in clients) {
+						updateOpts(clients[i]);
+					}
+					break;
 				case 'system':
 					displayChatMessage('<span class="system">' + chatMsg.content + '</span>');
 					break;
@@ -248,6 +259,7 @@
 		  // ** END socket handler definition 
 
 		  function login() {
+			  clearMembers();
 			  sock = new SockJS(sockjs_url);
 
 			  sock.onmessage = handleSockMessage;
