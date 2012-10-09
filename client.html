@@ -64,9 +64,9 @@
 
 		  // messaging protocol
 		  var MESSAGE_TYPES = ['chat', 'set_nickname', 'whisper', 'emote', 'kick'];
-		  var CMD_MESSAGES = ['whisper', 'emote', 'kick'];
-		  var CMD_REGEX = [ (/(^\/w)|(^\/whisper)/i), (/(^\/e)|(^\/emote)/i), (/(^\/k)|(^\/kick)/i)];
-		  var CMD_ARGS_NUM = [ 3, 2, 2 ];
+		  var CMD_MESSAGES = ['whisper', 'emote', 'kick', 'mute'];
+		  var CMD_REGEX = [ (/(^\/w)|(^\/whisper)/i), (/(^\/e)|(^\/emote)/i), (/(^\/k)|(^\/kick)/i),  (/(^\/m)|(^\/mute)/i)];
+		  var CMD_ARGS_NUM = [ 3, 2, 2, 2 ];
 
 		  function Message(type, content, target) {
 		  	this.msg_type = type;
@@ -107,11 +107,23 @@
 			var jqId = '#client_' + client.id;	// client's row
 			var jqOptsId = jqId + " > td.opts";	// opts' row
 
-			// process opts flags
+			// process options flags:
+
+			// Flag - op
 			if (client.opts['op']) {
-				$(jqOptsId).prepend('<i class="icon-asterisk" title="Op"></i> ');
+				// don't reflag if already OP
+				if ($(jqOptsId + " > i.icon-asterisk").length <= 0) {
+					$(jqOptsId).prepend('<i class="icon-asterisk" title="Op"></i> ');
+					displayChatMessage('<span class="system"><b>' + client.name + '</b> is chatroom Op</span>');
+				} 
 			} else {
-				$(jqOptsId + " > i").remove();
+				$(jqOptsId + " > i.icon-asterisk").remove();
+			}
+			// Flag - mute
+			if (client.opts['mute']) {
+				$(jqOptsId).prepend('<i class="icon-minus" title="Op"></i> ');
+			} else {
+				$(jqOptsId + " > i.icon-minus").remove();
 			}
 		  }
 		  function displayChatMessage(displayMessage) {
@@ -136,6 +148,7 @@
 					}
 					break;
 				case 'kick':
+				case 'mute':
 					var targetClient = nameMemberLookup[content.toLowerCase()];
 					if (targetClient && myClient.id != targetClient.id) {
 						toSend = new Message(type, content, targetClient.id);
@@ -252,6 +265,7 @@
 		  // connection closed
 		  function handleSockClose() {
 			  $('#loginButton').show();
+			  displayChatMessage('<span class="system">You have left the chat.</span>');
 			  $('#chat_history').addClass('disabled');
 			  alert('Connection to the Chat Server was closed');
 		  };

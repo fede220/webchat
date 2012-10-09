@@ -132,6 +132,20 @@ C.onMessage = function(data) {
 				targetClient.conn.close('-99', 'kicked by Op');
 			}
 			break;
+		case 'mute':
+			if (!this.opts['op']) {
+				this.send(chatMessage('system', this, 'Mute operation requires Op status'));
+			} else {
+				var targetClient = chatroom.clients[msg.target];
+				targetClient.opts['mute'] = !targetClient.opts['mute'];
+				if (targetClient.opts['mute']) {
+					chatroom.broadcast(chatMessage('system', this, targetClient.name + ' was muted by Op'));
+				} else {
+					chatroom.broadcast(chatMessage('system', this, targetClient.name + ' was unmuted by Op'));
+				}
+				chatroom.broadcast(chatMessage('update', this, [targetClient.toJSON()]));
+			}
+			break;
 		default:
 			console.warn("Unknown message type received: " + msg.msg_type);
 	}
@@ -162,8 +176,7 @@ CR.addClient = function(client) {
 	console.log('adding client: ' + client.id + ", name: " + client.name);
 	// chatroom always needs OP, assign to 1st cleint
 	if (!this.op) {
-		this.op = client;
-		client.opts['op'] = true;
+		this.assignOp(client);
 	}
 	// add to client list
 	this.clients[client.id] = client;
@@ -172,31 +185,62 @@ CR.addClient = function(client) {
 	this.broadcast(chatMessage('join', client, 'JOINED'));
 }
 
-// Chatroom: remove client
-CR.removeClient = function(client) {
-	delete this.clients[client.id];
-	var newOpNotification = null;
-	// if client was OP, assign OP to next client. 
-	if (this.op = client) {
-		console.log('** Op ' + this.op.name + ' (' + this.op.id + ') disconnected!');
+// Chatroom: unassign Op
+CR.unassignOp = function() {
+	var existingOp = this.op;
+	// only if there's an existing op.
+	if (this.op) {
+		this.op.opts['op'] = false;
+		console.log('** Op ' + this.op.name + ' (' + this.op.id + ') has been removed.');
 		this.op = null;
+	}
+	return existingOp;
+}
+
+// Chatroom: (re)assign Op
+CR.assignOp = function(client) {
+	var newOpNotification = null;
+	// remove existing op
+	var oldOp = this.unassignOp();
+	// give 'to next client' if no target client specified.
+	if (!client) {
 		// pick the first person in the enumeration.
 		for(var id in this.clients) {
 			this.op = this.clients[id];
 			this.op.opts['op'] = true;
 			console.log('** Assigning Op to: ' + this.op.name + ' (' + this.op.id + ')');
 			// notify
-			newOpNotification = chatMessage('update', client, [this.op.toJSON()]);
+			newOpNotification = chatMessage('update', this.op, [this.op.toJSON()]);
 			break;
 		}
 		if (!this.op) {
 			console.log('** WARN: no Op assigned!');
 		}
+	} else if (client) {
+		this.op = client;
+		this.op.opts['op'] = true;
+		console.log('** Op assigned to ' + this.op.name + ' (' + this.op.id + ')');
+		// switch to new Op
+		var updates = [];
+		if (oldOp) {
+			updates.push(oldOp.toJSON());
+		}
+		updates.push(this.op.toJSON());
+		newOpNotification = chatMessage('update', client, updates);
 	}
-	var disconnectMsg = chatMessage('disconnect', client, 'DISCONNECTED');
-	this.broadcast(disconnectMsg);
 	if (newOpNotification) {
 		this.broadcast(newOpNotification);
+	}
+}
+
+// Chatroom: remove client
+CR.removeClient = function(client) {
+	delete this.clients[client.id];
+	var disconnectMsg = chatMessage('disconnect', client, 'DISCONNECTED');
+	this.broadcast(disconnectMsg);
+	// if the Op leaves, reassign
+	if (this.op = client) {
+		this.assignOp();
 	}
 }
 
