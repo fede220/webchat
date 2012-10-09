@@ -15,16 +15,27 @@
 		span.emote { color: teal; font-style:italic; }
 		span.system { color: gray; font-style:italic; }
 
-		#chat_history.disabled { background-color: #dddddd; }
 		.me { background-color: #ddddff; }
-
-		#chat_history {
+		#chatContainer.disabled { background-color: #dddddd; }
+		#chatContainer {
 			height:400px;
 			overflow-y: scroll;
 			overflow-x: hidden;
 		}
-		#msg-input {
+		#chatMessageInput {
 			width: 780px;
+		}
+
+		#chatLog {
+			width:100%;
+		}
+		#chatLog td {
+			border: none;
+		}
+
+		#chatLog td.timestamp {
+			width: 80px;
+			overflow: hidden;
 		}
 	</style>
 </head>
@@ -33,13 +44,16 @@
 		<div class="row">
 			<div class="span10">
 				<h1>Ramshackle Chat v0.1</h1>
-				<div id="chat_history" class="disabled">
+				<div id="chatContainer" class="disabled">
 					<a id="loginButton" href="#login" role="button" class="btn" data-toggle="modal">Join Chat!</a>
-					<ul id="broadcast-msg"></ul>
+					<table id="chatLog" class="table table-hover">
+					<tbody>
+					</tbody>
+					</table>
 				</div>
 			 
-				<label for="msg-input">Chat Message</label>
-				<input id="msg-input" name="msg-input" type="textarea" size="50" />
+				<label for="chatMessageInput">Chat Message</label>
+				<input id="chatMessageInput" name="chatMessageInput" type="textarea" size="50" />
 				<p>Press enter to submit your message</p>
 	 		</div>
 			<div class="span2">
@@ -80,6 +94,14 @@
 			sock.send(JSON.stringify(msg));
 		  }
 		  // end messaging protocol
+
+		  function getTimestamp() {
+		  	var d = new Date();
+			var t = (d.getHours() >= 10 ? d.getHours() : "0" + d.getHours()) 
+				+ ":" + (d.getMinutes() >= 10 ? d.getMinutes() : "0" + d.getMinutes())
+				+ ":" + (d.getSeconds() >= 10 ? d.getSeconds() : "0" + d.getMinutes());
+			return t;
+		  }
 	 
 		  function addMember(client) {
 		  	chatMembers[client.id] = client;
@@ -126,11 +148,16 @@
 				$(jqOptsId + " > i.icon-minus").remove();
 			}
 		  }
+
+		  // appends a new message to the chatlog
 		  function displayChatMessage(displayMessage) {
 			if (displayMessage) {
-				displayMessage = '<li>' + displayMessage + '</li>';
-				$('#broadcast-msg').append(displayMessage);
-				$('#chat_history').scrollTop($('#chat_history').height());
+				var toShow = '<tr>';
+				toShow += '<td class="timestamp">' + getTimestamp() + '</td>';
+				toShow += '<td>' + displayMessage + '</td>';
+				toShow += '</tr>';
+				$('#chatLog > tbody').append(toShow);
+				$('#chatContainer').scrollTop($('#chatContainer').height());
 			}
 		  }
 		  function createCommandMessage(type, cmdArgs, content) {
@@ -196,7 +223,6 @@
 
 		  // ** socket handler definition 
 
-		  // on every message recieved we append to the #broadcast-msg div ul
 		  function handleSockMessage(message) {
 			var data = message.data;
 			console.log('Got new msg:', data);
@@ -255,7 +281,7 @@
 			var myNickname = $("#inputNickname").val();
 			send(new Message('set_nickname', myNickname));
 	 
-			$('#msg-input').change( function(){
+			$('#chatMessageInput').change( function(){
 			  var txt = $(this).val().trim();
 			  $(this).val('');
 			  parseMessageToSend(txt);
@@ -266,7 +292,7 @@
 		  function handleSockClose() {
 			  $('#loginButton').show();
 			  displayChatMessage('<span class="system">You have left the chat.</span>');
-			  $('#chat_history').addClass('disabled');
+			  $('#chatContainer').addClass('disabled');
 			  alert('Connection to the Chat Server was closed');
 		  };
 
@@ -282,7 +308,7 @@
 
 
 			  $('#loginButton').hide();
-			  $('#chat_history').removeClass('disabled');
+			  $('#chatContainer').removeClass('disabled');
 			  $('#login').modal('hide');
 		  }
 		</script>

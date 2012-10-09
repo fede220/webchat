@@ -111,9 +111,17 @@ C.onMessage = function(data) {
 			break;
 		case 'chat':
 		case 'emote':
-			chatroom.broadcast(chatMessage(msg.msg_type, this, msg.content));
+			if (this.opts['mute']) {
+				this.send(chatMessage('system', this, 'You cannot ' + msg.msg_type + ' while muted'));
+			} else {
+				chatroom.broadcast(chatMessage(msg.msg_type, this, msg.content));
+			}
 			break;
 		case 'whisper':
+			if (this.opts['mute']) {
+				this.send(chatMessage('system', this, 'You cannot ' + msg.msg_type + ' while muted'));
+				break;
+			}
 			var targetClient = chatroom.clients[msg.target];
 			if (targetClient) {
 				var toSend = chatMessage('whisper', this, msg.content, targetClient.id);
