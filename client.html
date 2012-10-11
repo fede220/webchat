@@ -9,15 +9,20 @@
 	<script src="http://code.jquery.com/jquery-1.7.1.min.js"></script>
 	<script src="res/js/bootstrap.min.js"></script>
 	<style>
-		span.connect{ color: blue; font-weight:bold; }
-		span.disconnect{ color: red; font-weight:bold; }
-		span.whisper{ color: purple; font-weight:bold; }
+		span.connect{ color: #049cdb; font-weight:bold; }
+		span.disconnect{ color: #9d261d; font-weight:bold; }
+		span.whisper{ color: #7a43b6; font-weight:bold; }
 		span.emote { color: teal; font-style:italic; }
 		span.system { color: gray; font-style:italic; }
 
+		#chatMembers {
+			box-shadow: 0px 1px 4px rgba(0, 0, 0, 0.067);
+		}
 		.me { background-color: #ddddff; }
+
 		#chatContainer.disabled { background-color: #dddddd; }
 		#chatContainer {
+			box-shadow: 0px 1px 4px rgba(0, 0, 0, 0.067);
 			height:400px;
 			overflow-y: scroll;
 			overflow-x: hidden;
@@ -34,7 +39,7 @@
 		}
 
 		#chatLog td.timestamp {
-			width: 80px;
+			width: 100px;
 			overflow: hidden;
 		}
 	</style>
@@ -58,9 +63,11 @@
 	 		</div>
 			<div class="span2">
 				<h2>Members</h2>
-				<table id="chat_members" class="table table-bordered">
+				<table id="chatMembers" class="table table-bordered">
+				<thead>
+					<tr><th></th><th>Nickname</th></tr>
+				</thead>
 				<tbody>
-				<th></th><th>Nickname</th>
 				</tbody>
 				</table>
 			</div>
@@ -97,18 +104,37 @@
 
 		  function getTimestamp() {
 		  	var d = new Date();
-			var t = (d.getHours() >= 10 ? d.getHours() : "0" + d.getHours()) 
+			var t = d.getDate() + "/" + (d.getMonth()+1)
+				+ " " + (d.getHours() >= 10 ? d.getHours() : "0" + d.getHours()) 
 				+ ":" + (d.getMinutes() >= 10 ? d.getMinutes() : "0" + d.getMinutes())
-				+ ":" + (d.getSeconds() >= 10 ? d.getSeconds() : "0" + d.getMinutes());
+				+ ":" + (d.getSeconds() >= 10 ? d.getSeconds() : "0" + d.getSeconds());
 			return t;
 		  }
 	 
+	 	  function doWhisper(name) {
+		  	$('#chatMessageInput').val('/whisper ' + name + ' ').focus();
+		  }
+	 	  function getMemberMenu(client) {
+			var domId = 'client_' + client.id;
+		  	var memberMenu = '<ul class="dropdown-menu" role="menu" aria-labelledby="d' + domId + '">';
+			memberMenu += '<li><a href="#" onClick="doWhisper(\'' + client.name + '\');"><i class="icon-comment"></i> Whisper...</a></li>';
+			//if (myClient.opts['op']) {
+				memberMenu += '<li class="divider"></li>';
+				memberMenu += '<li><a href="#"><i class="icon-remove"></i> Kick!</a></li>';
+				memberMenu += '<li><a href="#"><i class="icon-minus"></i> Mute</a></li>';
+			//}
+			memberMenu += '</ul>';
+			return memberMenu;
+		  }
 		  function addMember(client) {
 		  	chatMembers[client.id] = client;
 			nameMemberLookup[client.name.toLowerCase()] = client;
 			var domId = 'client_' + client.id;
 			var jqId = '#' + domId; 
-			$("#chat_members > tbody").append('<tr id="'+ domId +'" class="memberRow" style="display:none"><td class="opts"></td><td>' + client.name + '</td></tr>');
+			$("#chatMembers > tbody").append('<tr id="'+ domId +'" class="memberRow" style="display:none"><td class="opts"></td><td><div class="dropdown">'
+				+ '<a id="d' + domId + '" class="dropdown-toggle" role="button" data-toggle="dropdown" style="display:block;" href="#">' + client.name + '</a>' 
+				+ getMemberMenu(client)
+				+ '</div></td></tr>');
 			if (client.name == myClient.name) {
 				$(jqId).addClass("info");
 			}
@@ -123,7 +149,7 @@
 		  }
 		  // on connect/reconnect, reset member list
 		  function clearMembers() {
-			 $("#chat_members > tbody > tr.memberRow").remove();
+			 $("#chatMembers > tbody > tr.memberRow").remove();
 		  }
 		  function updateOpts(client) {
 			var jqId = '#client_' + client.id;	// client's row
@@ -143,7 +169,7 @@
 			}
 			// Flag - mute
 			if (client.opts['mute']) {
-				$(jqOptsId).prepend('<i class="icon-minus" title="Op"></i> ');
+				$(jqOptsId).prepend('<i class="icon-minus" title="Muted"></i> ');
 			} else {
 				$(jqOptsId + " > i.icon-minus").remove();
 			}
@@ -153,7 +179,7 @@
 		  function displayChatMessage(displayMessage) {
 			if (displayMessage) {
 				var toShow = '<tr>';
-				toShow += '<td class="timestamp">' + getTimestamp() + '</td>';
+				toShow += '<td class="timestamp"><small>' + getTimestamp() + '</small></td>';
 				toShow += '<td>' + displayMessage + '</td>';
 				toShow += '</tr>';
 				$('#chatLog > tbody').append(toShow);
@@ -171,7 +197,7 @@
 					if (targetClient && myClient.id != targetClient.id) {
 						toSend = new Message(type, content, targetClient.id);
 					} else {
-						displayChatMessage('<span class="system">You can\'t ' + type + ' yourself!</span>');
+						displayChatMessage('<span class="system">You can\'t ' + type + ' to yourself!</span>');
 					}
 					break;
 				case 'kick':
@@ -305,7 +331,6 @@
 			  sock.onmessage = handleSockMessage;
 			  sock.onopen = handleSockOpen;
 			  sock.onclose = handleSockClose;
-
 
 			  $('#loginButton').hide();
 			  $('#chatContainer').removeClass('disabled');
