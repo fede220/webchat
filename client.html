@@ -76,34 +76,58 @@
     <script>
       // sockjs connection to the server
       var sockjs_url = 'http://localhost:8000/sockjs';
-      var sock = null;
+      var chatroom = null;
 
-      // chat state/tracking vars
-      var chatMembers = [];
-      var nameMemberLookup = {};
-      var myClient = null;
+      // ** Chatroom
+      function Chatroom(sock) {
+        this.sock = sock;
+        this.members = [];
+        this.namesToMembers = {};
+        this.me = null;
+      }
+      var CR = Chatroom.prototype;
+      CR.send = function(msg) {
+        // send JSON msg
+        this.sock.send(JSON.stringify(msg));
+      }
+      CR.addMember = function(client) {
+        this.members[client.id] = client;
+        this.namesToMembers[client.name.toLowerCase()] = client;
+      }
+      CR.removeMember = function(client) {
+        delete this.members[client.id];
+        delete this.namesToMembers[client.name.toLowerCase()];
+      }
+      CR.lookupByName = function(name) {
+        if (name) {
+          return this.namesToMembers[name.toLowerCase()];
+        } else {
+          return null;
+        }
+      }
+      // ** END Chatroom
 
       // dropdown clickable commands menu
       $("#chatMembers ul li a").live("click", function(){
-          //var toSend = createCommandMessage('kick', null, 
-          var targetClientId = $(this).parent().parent().attr("client-id");
-          var targetClient = chatMembers[targetClientId];
-          var type = $(this).attr("operation");
-          switch(type) {
-            case 'whisper':
-              if (myClient.id != targetClientId) {
-                doWhisper(chatMembers[targetClientId].name);
-              } else {
-                displayChatMessage('<span class="system">You can\'t whisper to yourself!</span>');
-              }
-              break;
-            case 'kick':
-            case 'mute':
-              processCmd(type, targetClient, null);
-              break;
-            default:
-              break;
-          }
+        //var toSend = createCommandMessage('kick', null, 
+        var targetClientId = $(this).parent().parent().attr("client-id");
+        var targetClient = chatroom.members[targetClientId];
+        var type = $(this).attr("operation");
+        switch(type) {
+          case 'whisper':
+            if (chatroom.me.id != targetClientId) {
+              doWhisper(chatroom.members[targetClientId].name);
+            } else {
+              displayChatMessage('system', 'You can\'t whisper to yourself!');
+            }
+            break;
+          case 'kick':
+          case 'mute':
+            processCmd(type, targetClient, null);
+            break;
+          default:
+            break;
+        }
       });
       function doWhisper(name) {
         $('#chatMessageInput').val('/whisper ' + name + ' ').focus();
@@ -122,10 +146,6 @@
       }
       var M = Message.prototype;
 
-      // send JSON msg
-      function send(msg) {
-        sock.send(JSON.stringify(msg));
-      }
       // end messaging protocol
 
       function getTimestamp() {
@@ -138,27 +158,26 @@
       }
    
       function getMemberMenu(client) {
-      var domId = 'client_' + client.id;
+        var domId = 'client_' + client.id;
         var memberMenu = '<ul class="dropdown-menu" role="menu" aria-labelledby="d' + domId + '" client-id="'+client.id+'">';
         memberMenu += '<li><a operation="whisper" href="#"><i class="icon-comment"></i> Whisper...</a></li>';
-        //if (myClient.opts['op']) {
+        //if (chatroom.me.opts['op']) {
           memberMenu += '<li class="divider"></li>';
           memberMenu += '<li><a operation="kick" href="#"><i class="icon-remove"></i> Kick!</a></li>';
           memberMenu += '<li><a operation="mute" href="#"><i class="icon-minus"></i> Mute</a></li>';
         //}
-      memberMenu += '</ul>';
-      return memberMenu;
+        memberMenu += '</ul>';
+        return memberMenu;
       }
       function addMember(client) {
-        chatMembers[client.id] = client;
-        nameMemberLookup[client.name.toLowerCase()] = client;
+        chatroom.addMember(client);
         var domId = 'client_' + client.id;
         var jqId = '#' + domId; 
         $("#chatMembers > tbody").append('<tr id="'+ domId +'" class="memberRow" style="display:none"><td class="opts"></td><td><div class="dropdown">'
           + '<a id="d' + domId + '" class="dropdown-toggle" role="button" data-toggle="dropdown" style="display:block;" href="#">' + client.name + '</a>' 
           + getMemberMenu(client)
           + '</div></td></tr>');
-        if (client.name == myClient.name) {
+        if (client.name == chatroom.me.name) {
           $(jqId).addClass("info");
         }
         updateOpts(client);
@@ -167,43 +186,45 @@
       function removeMember(client) {
         var jqId = '#client_' + client.id;
         $(jqId).fadeOut("slow", function() { $(jqId).remove() } );
-        delete chatMembers[client.id];
-        delete nameMemberLookup[client.name.toLowerCase()];
+        chatroom.removeMember(client);
       }
-      // on connect/reconnect, reset member list
+      // on (re|dis)connect, reset member list
       function clearMembers() {
        $("#chatMembers > tbody > tr.memberRow").remove();
       }
       function updateOpts(client) {
-      var jqId = '#client_' + client.id;  // client's row
-      var jqOptsId = jqId + " > td.opts"; // opts' row
+        var jqId = '#client_' + client.id;  // client's row
+        var jqOptsId = jqId + " > td.opts"; // opts' row
 
-      // process options flags:
-
-      // Flag - op
-      if (client.opts['op']) {
-        // don't reflag if already OP
-        if ($(jqOptsId + " > i.icon-asterisk").length <= 0) {
-          $(jqOptsId).prepend('<i class="icon-asterisk" title="Op"></i> ');
-          displayChatMessage('<span class="system"><b>' + client.name + '</b> is chatroom Op</span>');
-        } 
-      } else {
-        $(jqOptsId + " > i.icon-asterisk").remove();
-      }
-      // Flag - mute
-      if (client.opts['mute']) {
-        $(jqOptsId).prepend('<i class="icon-minus" title="Muted"></i> ');
-      } else {
-        $(jqOptsId + " > i.icon-minus").remove();
-      }
+        // process options flags:
+        // Flag - op
+        if (client.opts['op']) {
+          // don't reflag if already OP
+          if ($(jqOptsId + " > i.icon-asterisk").length <= 0) {
+            $(jqOptsId).prepend('<i class="icon-asterisk" title="Op"></i> ');
+            displayChatMessage('system', 'is chatroom Op', client.name);
+          } 
+        } else {
+          $(jqOptsId + " > i.icon-asterisk").remove();
+        }
+        // Flag - mute
+        if (client.opts['mute']) {
+          $(jqOptsId).prepend('<i class="icon-minus" title="Muted"></i> ');
+        } else {
+          $(jqOptsId + " > i.icon-minus").remove();
+        }
       }
 
       // appends a new message to the chatlog
-      function displayChatMessage(displayMessage) {
-        if (displayMessage) {
+      function displayChatMessage(type, text, member) {
+        if (text) {
           var toShow = '<tr>';
           toShow += '<td class="timestamp"><small>' + getTimestamp() + '</small></td>';
-          toShow += '<td>' + displayMessage + '</td>';
+          toShow += '<td><span class="'+type+'">';
+          if (member) {
+            toShow += '<b>' + member + '</b>: ';
+          }
+          toShow += text + '</span></td>';
           toShow += '</tr>';
           $('#chatLog > tbody').append(toShow);
           $('#chatContainer').scrollTop($('#chatContainer').height());
@@ -214,18 +235,18 @@
         var toSend = null;
         switch(type) {
           case 'whisper':
-            if (myClient.id != target.id) {
+            if (chatroom.me.id != target.id) {
               toSend = new Message(type, content, target.id);
             } else {
-              displayChatMessage('<span class="system">You can\'t ' + type + ' to yourself!</span>');
+              displayChatMessage('system', 'You can\'t ' + type + ' to yourself!');
             }
             break;
           case 'kick':
           case 'mute':
-            if (myClient.id != target.id) {
+            if (chatroom.me.id != target.id) {
               toSend = new Message(type, content, target.id);
             } else {
-              displayChatMessage('<span class="system">You can\'t ' + type + ' yourself!</span>');
+              displayChatMessage('system', 'You can\'t ' + type + ' yourself!');
             }
             break;
           case 'emote':
@@ -236,7 +257,7 @@
             break;
         }
         if (toSend) {
-          send(toSend);
+          chatroom.send(toSend);
         }
       }
       function parseMessageToSend(txt) {
@@ -258,18 +279,18 @@
               switch(cmdType) {
                 case 'whisper':
                   // whisper: 2nd arg is target
-                  targetClient = nameMemberLookup[cmdArgs[1].toLowerCase()];
+                  targetClient = chatroom.lookupByName(cmdArgs[1]);
                   if (!targetClient) {
-                    displayChatMessage('<span class="system">Member ' + cmdArgs[1] + ' does not exist.</span>');
+                    displayChatMessage('system', 'Member ' + cmdArgs[1] + ' does not exist.');
                     isValid = false;
                   }
                   break;
                 case 'kick':
                 case 'mute':
                   // mute/kick: 'content' is the target
-                  targetClient = nameMemberLookup[content.toLowerCase()];
+                  targetClient = chatroom.lookupByName(content);
                   if (!targetClient) {
-                    displayChatMessage('<span class="system">Member ' + content + ' does not exist.</span>');
+                    displayChatMessage('system', 'Member ' + content + ' does not exist.');
                     isValid = false;
                   }
                   break;                
@@ -283,11 +304,11 @@
             }
           } // for
           if (!cmdArgs) {
-            displayChatMessage('<span class="system">Unknown command/invalid syntax for command "' + tokens[0] + '"</span>');
+            displayChatMessage('system', 'Unknown command/invalid syntax for command "' + tokens[0] + '"');
           }
         } else {
           // not a command, general chat
-          send(new Message('chat', txt));
+          chatroom.send(new Message('chat', txt));
         }
 
       }
@@ -295,74 +316,73 @@
       // ** socket handler definition 
 
       function handleSockMessage(message) {
-      var data = message.data;
-      console.log('Got new msg:', data);
-      var chatMsg = JSON.parse(message.data);
-      var displayMessage = '';
-      switch(chatMsg.msg_type) {
-        case 'connect':
-          if (!myClient) {
-            myClient = chatMsg.from;
-          }
-          break;
-        case 'join':
-          addMember(chatMsg.from);
-          displayMessage = '<span class="connect"><b>' + chatMsg.from.name + '</b> joined the chat.</span>';
-          break;
-        case 'members':
-          var clients = chatMsg.content;
-          for(var i in clients) {
-            addMember(clients[i]);
-          }
-          break;
-        case 'chat':
-          displayMessage = '<b>' + chatMsg.from.name + '</b>: ' + chatMsg.content +'';
-          break;
-        case 'whisper':
-          if (myClient.name == chatMsg.from.name) {
-            displayMessage = '<span class="whisper">You whisper to <b>' + chatMembers[chatMsg.target].name + '</b></span>: ' + chatMsg.content +'';
-          } else {
-            displayMessage = '<span class="whisper"><b>' + chatMsg.from.name + '</b> whispers</span>: ' + chatMsg.content +'';
-          }
-          break;
-        case 'emote':
-          displayMessage = '<span class="emote"><b>' + chatMsg.from.name + '</b> ' + chatMsg.content +'</span>';
-          break;
-        case 'disconnect':
-          displayMessage = '<span class="disconnect"><b>' + chatMsg.from.name + '</b> left the chat.</span>';
-          removeMember(chatMsg.from);
-          break;
-        case 'update':
-          var clients = chatMsg.content;
-          for(var i in clients) {
-            updateOpts(clients[i]);
-          }
-          break;
-        case 'system':
-          displayChatMessage('<span class="system">' + chatMsg.content + '</span>');
-          break;
-        default:
-          console.log('Unknown message type, ignorning');
-      }
-      displayChatMessage(displayMessage);
+        var data = message.data;
+        console.log('Got new msg:', data);
+        var chatMsg = JSON.parse(message.data);
+        switch(chatMsg.msg_type) {
+          case 'connect':
+            if (!chatroom.me) {
+              chatroom.me = chatMsg.from;
+            }
+            break;
+          case 'join':
+            addMember(chatMsg.from);
+            displayChatMessage('connect', 'joined the chat.', chatMsg.from.name); 
+            break;
+          case 'members':
+            var clients = chatMsg.content;
+            for(var i in clients) {
+              addMember(clients[i]);
+            }
+            break;
+          case 'chat':
+            displayChatMessage('', chatMsg.content, chatMsg.from.name);
+            break;
+          case 'whisper':
+            if (chatroom.me.name == chatMsg.from.name) {
+              displayChatMessage('whisper', chatMsg.content, 'You whisper to ' + chatroom.members[chatMsg.target].name); 
+            } else {
+              displayChatMessage('whisper', chatMsg.content, chatMsg.from.name + ' whispers'); 
+            }
+            break;
+          case 'emote':
+            displayChatMessage('emote', chatMsg.content, chatMsg.from.name);
+            break;
+          case 'disconnect':
+            displayChatMessage('disconnect', 'left the chat.', chatMsg.from.name);
+            removeMember(chatMsg.from);
+            break;
+          case 'update':
+            var clients = chatMsg.content;
+            for(var i in clients) {
+              updateOpts(clients[i]);
+            }
+            break;
+          case 'system':
+            displayChatMessage('system', chatMsg.content);
+            break;
+          default:
+            console.log('Unknown message type, ignorning');
+        }
       };
    
       // Create a new socket connection
       function handleSockOpen() {
-      var myNickname = $("#inputNickname").val();
-      send(new Message('set_nickname', myNickname));
-   
-      $('#chatMessageInput').change( function(){
-        var txt = $(this).val().trim();
-        $(this).val('');
-        parseMessageToSend(txt);
-      });
+        var myNickname = $("#inputNickname").val();
+        chatroom.send(new Message('set_nickname', myNickname));
+     
+        $('#chatMessageInput').change( function(){
+          var txt = $(this).val().trim();
+          $(this).val('');
+          parseMessageToSend(txt);
+        });
       };
 
       // connection closed
       function handleSockClose() {
+        clearMembers();
         $('#loginButton').show();
-        displayChatMessage('<span class="system">You have left the chat.</span>');
+        displayChatMessage('system', 'You have left the chat.');
         $('#chatContainer').addClass('disabled');
         alert('Connection to the Chat Server was closed');
       };
@@ -371,11 +391,12 @@
 
       function login() {
         clearMembers();
-        sock = new SockJS(sockjs_url);
-
+        var sock = new SockJS(sockjs_url);
         sock.onmessage = handleSockMessage;
         sock.onopen = handleSockOpen;
         sock.onclose = handleSockClose;
+        // chatroom
+        chatroom = new Chatroom(sock);
 
         $('#loginButton').hide();
         $('#chatContainer').removeClass('disabled');
