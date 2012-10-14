@@ -146,12 +146,12 @@
             if (chatroom.me.id != targetClientId) {
               doWhisper(chatroom.members[targetClientId].name);
             } else {
-              displayChatMessage('system', 'You can\'t whisper to yourself!');
+              displayChatMsg('system', 'You can\'t whisper to yourself!');
             }
             break;
           case 'kick':
           case 'mute':
-            processCmd(type, targetClient, null);
+            executeCmd(type, targetClient, null);
             break;
           case 'quit':
             chatroom.sock.close();
@@ -229,7 +229,7 @@
           // don't reflag if already OP
           if ($(jqOptsId + " > i.icon-asterisk").length <= 0) {
             $(jqOptsId).prepend('<i class="icon-asterisk" title="Op"></i>');
-            displayChatMessage('system', 'is chatroom Op', client.name);
+            displayChatMsg('system', 'is chatroom Op', client.name);
           } 
         } else {
           $(jqOptsId + " > i.icon-asterisk").remove();
@@ -243,7 +243,7 @@
       }
 
       // appends a new message to the chatlog
-      function displayChatMessage(type, text, name) {
+      function displayChatMsg(type, text, name) {
         if (text) {
           var toShow = '<tr>';
           toShow += '<td class="timestamp"><small>' + getTimestamp() + '</small></td>';
@@ -262,14 +262,14 @@
         }
       }
       // processes a chat command
-      function processCmd(type, target, content) {
+      function executeCmd(type, target, content) {
         var toSend = null;
         switch(type) {
           case 'whisper':
             if (chatroom.me.id != target.id) {
               toSend = new Message(type, content, target.id);
             } else {
-              displayChatMessage('system', 'You can\'t ' + type + ' to yourself!');
+              displayChatMsg('system', 'You can\'t ' + type + ' to yourself!');
             }
             break;
           case 'kick':
@@ -277,7 +277,7 @@
             if (chatroom.me.id != target.id) {
               toSend = new Message(type, content, target.id);
             } else {
-              displayChatMessage('system', 'You can\'t ' + type + ' yourself!');
+              displayChatMsg('system', 'You can\'t ' + type + ' yourself!');
             }
             break;
           case 'emote':
@@ -291,7 +291,8 @@
           chatroom.send(toSend);
         }
       }
-      function parseMessageToSend(txt) {
+      // process input from the chat box
+      function processChatMsgInput(txt) {
         // FIXME: using tokenization split/join is ineffcient for messages with a lot of spaces.  Better to use an indexOf means instead.
         var tokens = txt.split(" ");
         // handle commands - examine first token for command escape
@@ -302,40 +303,33 @@
             // find cmd matching input escape sequence
             if (CMD_REGEX[i].test(tokens[0]) && tokens.length >= CMD_ARGS_NUM[i]) {
               cmdArgs = tokens.splice(0, CMD_ARGS_NUM[i]-1);
-              content = tokens.join(" "); // anything past the command/args
+              cmdArgs.push(tokens.join(" ")); // last arg => everything else => 'content'.
               var cmdType = CMD_MESSAGES[i];
               var isValid = true;
               var targetClient = null;
               // validate args depending on command type:
               switch(cmdType) {
                 case 'whisper':
-                  // whisper: 2nd arg is target
+                case 'kick':
+                case 'mute':
+                  // 2nd arg is target
                   targetClient = chatroom.lookupByName(cmdArgs[1]);
                   if (!targetClient) {
-                    displayChatMessage('system', 'Member ' + cmdArgs[1] + ' does not exist.');
+                    displayChatMsg('system', 'Member ' + cmdArgs[1] + ' does not exist.');
                     isValid = false;
                   }
                   break;
-                case 'kick':
-                case 'mute':
-                  // mute/kick: 'content' is the target
-                  targetClient = chatroom.lookupByName(content);
-                  if (!targetClient) {
-                    displayChatMessage('system', 'Member ' + content + ' does not exist.');
-                    isValid = false;
-                  }
-                  break;                
                 default:
                   break;
               } // switch
               if (isValid) {
-                processCmd(cmdType, targetClient, content);
+                executeCmd(cmdType, targetClient, cmdArgs[cmdArgs.length-1]);
               }
               break;
             }
           } // for
           if (!cmdArgs) {
-            displayChatMessage('system', 'Unknown command/invalid syntax for command "' + tokens[0] + '"');
+            displayChatMsg('system', 'Unknown command/invalid syntax for command "' + tokens[0] + '"');
           }
         } else {
           // not a command, general chat
@@ -358,7 +352,7 @@
             break;
           case 'join':
             addMember(chatMsg.from);
-            displayChatMessage('connect', 'joined the chat.', chatMsg.from.name); 
+            displayChatMsg('connect', 'joined the chat.', chatMsg.from.name); 
             break;
           case 'members':
             var clients = chatMsg.content;
@@ -367,20 +361,20 @@
             }
             break;
           case 'chat':
-            displayChatMessage(null, chatMsg.content, chatMsg.from.name);
+            displayChatMsg(null, chatMsg.content, chatMsg.from.name);
             break;
           case 'whisper':
             if (chatroom.me.name == chatMsg.from.name) {
-              displayChatMessage('whisper', chatMsg.content, 'You whisper to ' + chatroom.members[chatMsg.target].name); 
+              displayChatMsg('whisper', chatMsg.content, 'You whisper to ' + chatroom.members[chatMsg.target].name); 
             } else {
-              displayChatMessage('whisper', chatMsg.content, chatMsg.from.name + ' whispers'); 
+              displayChatMsg('whisper', chatMsg.content, chatMsg.from.name + ' whispers'); 
             }
             break;
           case 'emote':
-            displayChatMessage('emote', chatMsg.content, chatMsg.from.name);
+            displayChatMsg('emote', chatMsg.content, chatMsg.from.name);
             break;
           case 'disconnect':
-            displayChatMessage('disconnect', 'left the chat.', chatMsg.from.name);
+            displayChatMsg('disconnect', 'left the chat.', chatMsg.from.name);
             removeMember(chatMsg.from);
             break;
           case 'update':
@@ -391,7 +385,7 @@
             }
             break;
           case 'system':
-            displayChatMessage('system', chatMsg.content);
+            displayChatMsg('system', chatMsg.content);
             break;
           default:
             console.log('Unknown message type, ignorning');
@@ -403,10 +397,12 @@
         var myNickname = $("#inputNickname").val();
         chatroom.send(new Message('set_nickname', myNickname));
      
-        $('#chatMessageInput').change( function(){
-          var txt = $(this).val().trim();
-          $(this).val('');
-          parseMessageToSend(txt);
+        $('#chatMessageInput').keypress( function(e){
+          if (e.which == 13) {
+            var txt = $(this).val().trim();
+            $(this).val('');
+            processChatMsgInput(txt);
+          }
         });
       };
 
@@ -414,7 +410,7 @@
       function handleSockClose() {
         clearMembers();
         $('#loginButton').show();
-        displayChatMessage('system', 'You have left the chat.');
+        displayChatMsg('system', 'You have left the chat.');
         $('#chatContainer').addClass('disabled');
         alert('Connection to the Chat Server was closed');
       };
@@ -445,10 +441,16 @@
     </div>
     <div class="modal-body">
       <p>To join, please enter a nickname.</p>
-      <form id="loginForm" name="loginForm" action="#">
-        <label for="inputNickname">Nickname:</label>
-        <input id="inputNickname" name="inputNickname"/>
-      </form>
+      <label for="inputNickname">Nickname:</label>
+      <input id="inputNickname" name="inputNickname"/>
+      <script>
+        // simulate 'form submission' by capturing the 'enter' key
+        $("#inputNickname").keypress(function(e) {
+          if (e.which == 13) {
+            login();
+          }
+        });
+      </script>
     </div>
     <div class="modal-footer">
       <button class="btn" data-dismiss="modal" aria-hidden="true">Cancel</button>
