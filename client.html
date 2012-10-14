@@ -84,6 +84,7 @@
         this.members = [];
         this.namesToMembers = {};
         this.me = null;
+        this.lastWhispered = null;
       }
       var CR = Chatroom.prototype;
       CR.send = function(msg) {
@@ -368,6 +369,8 @@
               displayChatMsg('whisper', chatMsg.content, 'You whisper to ' + chatroom.members[chatMsg.target].name); 
             } else {
               displayChatMsg('whisper', chatMsg.content, chatMsg.from.name + ' whispers'); 
+              // update last whispered
+              chatroom.lastWhispered = chatMsg.from;
             }
             break;
           case 'emote':
@@ -402,6 +405,15 @@
             var txt = $(this).val().trim();
             $(this).val('');
             processChatMsgInput(txt);
+          } else {
+            // TODO: refactor this to handle any commands
+            if (e.which == 32) {
+              // check for escape command for 'reply'
+              var txt = $(this).val().replace(/^\s+/, '');
+              if (chatroom.lastWhispered && ('/reply').indexOf(txt) > -1) {
+                doWhisper(chatroom.lastWhispered.name);
+              }
+            }
           }
         });
       };
