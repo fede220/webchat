@@ -154,6 +154,15 @@ C.onMessage = function(data) {
 				chatroom.broadcast(chatMessage('update', this, [targetClient.toJSON()]));
 			}
 			break;
+		case 'promote':
+			if (!this.opts['op']) {
+				this.send(chatMessage('system', this, 'promote operation requires Op status'));
+			} else {
+				var targetClient = chatroom.clients[msg.target];
+				chatroom.broadcast(chatMessage('system', this, this.name + ' promoted ' + targetClient.name + ' to Op'));
+				chatroom.assignOp(targetClient);
+			}
+			break;
 		default:
 			console.warn("Unknown message type received: " + msg.msg_type);
 	}
@@ -278,7 +287,7 @@ function onConnection(conn) {
 		chatroom = new Chatroom(1);
 	}
 	var client = new Client(conn);
-	// handlers
+	// handlers - bind to client
 	conn.on('data', client.onMessage.bind(client)); 
 	conn.once('close', client.onDisconnect.bind(client));
 }
