@@ -7,6 +7,7 @@
   <script src="res/sockjs-0.3.2.min.js"></script>
   <script src="http://code.jquery.com/jquery-1.7.1.min.js"></script>
   <script src="res/js/bootstrap.min.js"></script>
+  <script src="res/js/util.js"></script>
   <style>
     span.connect{ color: #049cdb; font-weight:bold; }
     span.disconnect{ color: #9d261d; font-weight:bold; }
@@ -40,6 +41,17 @@
     #chatLog td.timestamp {
       width: 100px;
       overflow: hidden;
+    }
+
+
+    a.chat-link {
+      color: inherit;
+    }
+    a.chat-link:before {
+      content: '[';
+    }
+    a.chat-link:after {
+      content: ']';
     }
   </style>
 </head>
@@ -141,7 +153,6 @@
         // replace contents
         memberMenu.html(content);
       }
-
       // handle links in dropdown clickable commands menu
       $("#chatMembers ul li a").live("click", function(){
         //var toSend = createCommandMessage('kick', null, 
@@ -168,8 +179,14 @@
             break;
         }
       });
+      // inline links in the chatbox
+      $("#chatLog a.chat-link").live("click", function() {
+        doWhisper($(this).html());
+      });
+
       function doWhisper(name) {
-        $('#chatMessageInput').val('/whisper ' + name + ' ').focus();
+        var whisperText = '/whisper ' + name + ' ';
+        $('#chatMessageInput').val(whisperText).setCursorPosition(whisperText.length+1).focus();
       }
 
       // messaging protocol
@@ -261,7 +278,7 @@
           }
           toShow += '>';
           if (name) {
-            toShow += '<b>' + name + '</b>: ';
+            toShow += '<a href="#" class="chat-link">' + name + '</a>: ';
           }
           toShow += text + '</span></td>';
           toShow += '</tr>';
@@ -374,9 +391,9 @@
             break;
           case 'whisper':
             if (chatroom.me.name == chatMsg.from.name) {
-              displayChatMsg('whisper', chatMsg.content, 'You whisper to ' + chatroom.members[chatMsg.target].name); 
+              displayChatMsg('whisper', 'You whisper to ' + chatroom.members[chatMsg.target].name + ': ' + chatMsg.content); 
             } else {
-              displayChatMsg('whisper', chatMsg.content, chatMsg.from.name + ' whispers'); 
+              displayChatMsg('whisper', ' whispers: ' + chatMsg.content, chatMsg.from.name); 
               // update last whispered
               chatroom.lastWhispered = chatMsg.from;
             }

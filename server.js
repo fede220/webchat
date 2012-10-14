@@ -96,6 +96,8 @@ C.onMessage = function(data) {
 			if (!this.name) {
 				this.name = generateAnonName(this);
 			}
+			// sanitize.  TODO: other weird chars?
+			this.name = this.name.replace(/\s/g, '_');
 			// TODO: handle name-already-in-use
 			// initial connect, send ack back to client w/ client details
 			if (!chatroom.clients[this.id]) {
