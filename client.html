@@ -94,6 +94,13 @@
         this.members[client.id] = client;
         this.namesToMembers[client.name.toLowerCase()] = client;
       }
+      CR.updateMember = function(client) {
+        if (this.me && this.me.id == client.id) {
+          this.me = client;
+        }
+        // add == update since it's a map/array (overwrite)
+        this.addMember(client);
+      }
       CR.removeMember = function(client) {
         delete this.members[client.id];
         delete this.namesToMembers[client.name.toLowerCase()];
@@ -107,7 +114,28 @@
       }
       // ** END Chatroom
 
-      // dropdown clickable commands menu
+      // dynamically populate clickable commands menu 
+      function updateDropdown(clientId) {
+        var forMember = chatroom.members[clientId];
+        var memberMenu = $('ul[client-id="'+clientId+'"]');
+        var content = '';
+
+        // only thing you can do to yourself is quit
+        if (forMember.id == chatroom.me.id) {
+          content += '<li><a operation="quit" href="#"><i class="icon-remove"></i> Leave Chat</a></li>';
+        } else {
+          content += '<li><a operation="whisper" href="#"><i class="icon-comment"></i> Whisper...</a></li>';
+          if (chatroom.me.opts['op']) {
+            content += '<li class="divider"></li>';
+            content += '<li><a operation="kick" href="#"><i class="icon-remove"></i> Kick!</a></li>';
+            content += '<li><a operation="mute" href="#"><i class="icon-minus"></i> Mute</a></li>';
+          }
+        }
+        // replace contents
+        memberMenu.html(content);
+      }
+
+      // handle links in dropdown clickable commands menu
       $("#chatMembers ul li a").live("click", function(){
         //var toSend = createCommandMessage('kick', null, 
         var targetClientId = $(this).parent().parent().attr("client-id");
@@ -124,6 +152,9 @@
           case 'kick':
           case 'mute':
             processCmd(type, targetClient, null);
+            break;
+          case 'quit':
+            chatroom.sock.close();
             break;
           default:
             break;
@@ -156,16 +187,12 @@
           + ":" + (d.getSeconds() >= 10 ? d.getSeconds() : "0" + d.getSeconds());
       return t;
       }
+
    
       function getMemberMenu(client) {
         var domId = 'client_' + client.id;
         var memberMenu = '<ul class="dropdown-menu" role="menu" aria-labelledby="d' + domId + '" client-id="'+client.id+'">';
-        memberMenu += '<li><a operation="whisper" href="#"><i class="icon-comment"></i> Whisper...</a></li>';
-        //if (chatroom.me.opts['op']) {
-          memberMenu += '<li class="divider"></li>';
-          memberMenu += '<li><a operation="kick" href="#"><i class="icon-remove"></i> Kick!</a></li>';
-          memberMenu += '<li><a operation="mute" href="#"><i class="icon-minus"></i> Mute</a></li>';
-        //}
+        // empty for now?
         memberMenu += '</ul>';
         return memberMenu;
       }
@@ -174,7 +201,7 @@
         var domId = 'client_' + client.id;
         var jqId = '#' + domId; 
         $("#chatMembers > tbody").append('<tr id="'+ domId +'" class="memberRow" style="display:none"><td class="opts"></td><td><div class="dropdown">'
-          + '<a id="d' + domId + '" class="dropdown-toggle" role="button" data-toggle="dropdown" style="display:block;" href="#">' + client.name + '</a>' 
+          + '<a id="d' + domId + '" onClick="updateDropdown(' + client.id + ');" class="dropdown-toggle" client-id="'+client.id+'" role="button" data-toggle="dropdown" style="display:block;" href="#">' + client.name + '</a>' 
           + getMemberMenu(client)
           + '</div></td></tr>');
         if (client.name == chatroom.me.name) {
@@ -201,7 +228,7 @@
         if (client.opts['op']) {
           // don't reflag if already OP
           if ($(jqOptsId + " > i.icon-asterisk").length <= 0) {
-            $(jqOptsId).prepend('<i class="icon-asterisk" title="Op"></i> ');
+            $(jqOptsId).prepend('<i class="icon-asterisk" title="Op"></i>');
             displayChatMessage('system', 'is chatroom Op', client.name);
           } 
         } else {
@@ -209,20 +236,24 @@
         }
         // Flag - mute
         if (client.opts['mute']) {
-          $(jqOptsId).prepend('<i class="icon-minus" title="Muted"></i> ');
+          $(jqOptsId).prepend('<i class="icon-minus" title="Muted"></i>');
         } else {
           $(jqOptsId + " > i.icon-minus").remove();
         }
       }
 
       // appends a new message to the chatlog
-      function displayChatMessage(type, text, member) {
+      function displayChatMessage(type, text, name) {
         if (text) {
           var toShow = '<tr>';
           toShow += '<td class="timestamp"><small>' + getTimestamp() + '</small></td>';
-          toShow += '<td><span class="'+type+'">';
-          if (member) {
-            toShow += '<b>' + member + '</b>: ';
+          toShow += '<td><span ';
+          if (type) {
+            toShow += 'class="' + type + '"';
+          }
+          toShow += '>';
+          if (name) {
+            toShow += '<b>' + name + '</b>: ';
           }
           toShow += text + '</span></td>';
           toShow += '</tr>';
@@ -336,7 +367,7 @@
             }
             break;
           case 'chat':
-            displayChatMessage('', chatMsg.content, chatMsg.from.name);
+            displayChatMessage(null, chatMsg.content, chatMsg.from.name);
             break;
           case 'whisper':
             if (chatroom.me.name == chatMsg.from.name) {
@@ -355,6 +386,7 @@
           case 'update':
             var clients = chatMsg.content;
             for(var i in clients) {
+              chatroom.updateMember(clients[i]);
               updateOpts(clients[i]);
             }
             break;
