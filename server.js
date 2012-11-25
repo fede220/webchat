@@ -305,10 +305,5 @@ function sockJsLog(sev, msg) {
 
 if (require.main === module) {
 	startServer();
-/*	require('async').map(['server.js','client.html','static/res/sockjs-0.3.2.min.js', 'dne.txt'], function(item, callback) { console.log("in the iterator"); callback(null, 'WOO');}, function(err, results){
-	    // results is now an array of stats for each file
-		console.log(require('util').inspect(results));
-		});
-		*/
 }
 
